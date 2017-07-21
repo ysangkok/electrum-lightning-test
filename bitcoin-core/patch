@@ -1,0 +1,125 @@
+diff --git a/src/chainparams.cpp b/src/chainparams.cpp
+index dc4d262..815d03a 100644
+--- a/src/chainparams.cpp
++++ b/src/chainparams.cpp
+@@ -265,19 +265,19 @@ public:
+ class CRegTestParams : public CChainParams {
+ public:
+     CRegTestParams() {
+-        strNetworkID = "regtest";
+-        consensus.nSubsidyHalvingInterval = 150;
+-        consensus.BIP34Height = 100000000; // BIP34 has not activated on regtest (far in the future so block v1 are not rejected in tests)
+-        consensus.BIP34Hash = uint256();
+-        consensus.BIP65Height = 1351; // BIP65 activated on regtest (Used in rpc activation tests)
+-        consensus.BIP66Height = 1251; // BIP66 activated on regtest (Used in rpc activation tests)
++        strNetworkID = "sim";
++        consensus.nSubsidyHalvingInterval = 210000;
++        consensus.BIP34Height = 0; // BIP34 has not activated on regtest (far in the future so block v1 are not rejected in tests)
++        consensus.BIP34Hash = uint256S("0x683e86bd5c6d110d91b94b97137ba6bfe02dbbdb8e3dff722a669b5d69d77af6");
++        consensus.BIP65Height = 0; // BIP65 activated on regtest (Used in rpc activation tests)
++        consensus.BIP66Height = 0; // BIP66 activated on regtest (Used in rpc activation tests)
+         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+         consensus.nPowTargetSpacing = 10 * 60;
+         consensus.fPowAllowMinDifficultyBlocks = true;
+         consensus.fPowNoRetargeting = true;
+-        consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
+-        consensus.nMinerConfirmationWindow = 144; // Faster than normal for regtest (144 instead of 2016)
++        consensus.nRuleChangeActivationThreshold = 51; // 75% for testchains
++        consensus.nMinerConfirmationWindow = 100; // Faster than normal for regtest (144 instead of 2016)
+         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
+         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 0;
+         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = 999999999999ULL;
+@@ -294,16 +294,17 @@ public:
+         // By default assume that the signatures in ancestors of this block are valid.
+         consensus.defaultAssumeValid = uint256S("0x00");
+ 
+-        pchMessageStart[0] = 0xfa;
+-        pchMessageStart[1] = 0xbf;
+-        pchMessageStart[2] = 0xb5;
+-        pchMessageStart[3] = 0xda;
+-        nDefaultPort = 18444;
++        pchMessageStart[0] = 0x16;
++        pchMessageStart[1] = 0x1c;
++        pchMessageStart[2] = 0x14;
++        pchMessageStart[3] = 0x12;
++        nDefaultPort = 18555;
+         nPruneAfterHeight = 1000;
+ 
+-        genesis = CreateGenesisBlock(1296688602, 2, 0x207fffff, 1, 50 * COIN);
++        genesis = CreateGenesisBlock(1401292357, 2, 0x207fffff, 1, 50 * COIN);
+         consensus.hashGenesisBlock = genesis.GetHash();
+-        assert(consensus.hashGenesisBlock == uint256S("0x0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"));
++        std::cerr << consensus.hashGenesisBlock.ToString() << std::endl;
++        assert(consensus.hashGenesisBlock == consensus.BIP34Hash);
+         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
+ 
+         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
+@@ -315,7 +316,7 @@ public:
+ 
+         checkpointData = (CCheckpointData) {
+             {
+-                {0, uint256S("0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206")},
++//                {0, uint256S("0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206")},
+             }
+         };
+ 
+@@ -325,11 +326,11 @@ public:
+             0
+         };
+ 
+-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
+-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
+-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
+-        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
+-        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
++        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,0x3f);
++        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,0x7b);
++        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,0x64);
++        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x20, 0xbd, 0x3a};
++        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x20, 0xb9, 0x00};
+     }
+ };
+ 
+diff --git a/src/validation.cpp b/src/validation.cpp
+index ddc8b1b..5519d1b 100644
+--- a/src/validation.cpp
++++ b/src/validation.cpp
+@@ -2020,12 +2020,19 @@ void static UpdateTip(CBlockIndex *pindexNew, const CChainParams& chainParams) {
+         for (int i = 0; i < 100 && pindex != NULL; i++)
+         {
+             int32_t nExpectedVersion = ComputeBlockVersion(pindex->pprev, chainParams.GetConsensus());
+-            if (pindex->nVersion > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->nVersion & ~nExpectedVersion) != 0)
++            if (pindex->nVersion > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->nVersion & ~nExpectedVersion) != 0) {
++                std::cerr << "unexpected version " << pindex->nVersion << " " << VERSIONBITS_LAST_OLD_BLOCK_VERSION << " " << nExpectedVersion << std::endl;
++                abort();
+                 ++nUpgraded;
++            }
+             pindex = pindex->pprev;
+         }
+-        if (nUpgraded > 0)
+-            warningMessages.push_back(strprintf(_("%d of last 100 blocks have unexpected version"), nUpgraded));
++        if (nUpgraded > 0) {
++            auto msg = strprintf(_("%d of last 100 blocks have unexpected version"), nUpgraded);
++            warningMessages.push_back(msg);
++            std::cerr << msg << std::endl;
++            abort();
++        }
+         if (nUpgraded > 100/2)
+         {
+             std::string strWarning = _("Warning: Unknown block versions being mined! It's possible unknown rules are in effect");
+@@ -2919,8 +2926,12 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationSta
+     assert(pindexPrev != NULL);
+     const int nHeight = pindexPrev->nHeight + 1;
+     // Check proof of work
+-    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
+-        return state.DoS(100, false, REJECT_INVALID, "bad-diffbits", false, "incorrect proof of work");
++    auto nextWork = GetNextWorkRequired(pindexPrev, &block, consensusParams);
++    if (block.nBits != nextWork) {
++        std::cerr << "bad-diffbits " << block.nBits << " != " << nextWork << std::endl;
++        abort();
++        //return state.DoS(100, false, REJECT_INVALID, "bad-diffbits", false, "incorrect proof of work");
++    }
+ 
+     // Check timestamp against prev
+     if (block.GetBlockTime() <= pindexPrev->GetMedianTimePast())

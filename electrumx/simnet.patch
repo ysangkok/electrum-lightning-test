@@ -1,0 +1,51 @@
+diff --git a/electrumx_server.py b/electrumx_server.py
+index 946d445..7008b0f 100755
+--- a/electrumx_server.py
++++ b/electrumx_server.py
+@@ -37,7 +37,7 @@ def main_loop():
+                            'account and use that')
+ 
+     loop = asyncio.get_event_loop()
+-    # loop.set_debug(True)
++    loop.set_debug(True)
+ 
+     def on_signal(signame):
+         '''Call on receipt of a signal to cleanly shutdown.'''
+diff --git a/lib/coins.py b/lib/coins.py
+index 40caa28..5932cbb 100644
+--- a/lib/coins.py
++++ b/lib/coins.py
+@@ -406,6 +406,20 @@ class BitcoinNolnet(Bitcoin):
+         '14.3.140.101 s t',
+     ]
+ 
++class BitcoinSimnet(Coin):
++    NAME = "Bitcoin"
++    SHORTNAME = "SIM"
++    NET = "simnet"
++    XPUB_VERBYTES = bytes.fromhex("0420bd3a")
++    XPRV_VERBYTES = bytes.fromhex("0420b900")
++    P2PKH_VERBYTE = bytes.fromhex("3f")
++    P2SH_VERBYTES = [bytes.fromhex("7b")]
++    WIF_BYTE = bytes.fromhex("64")
++    GENESIS_HASH = '683e86bd5c6d110d91b94b97137ba6bfe02dbbdb8e3dff722a669b5d69d77af6'
++    TX_COUNT = 10
++    TX_COUNT_HEIGHT = 1000
++    TX_PER_BLOCK = 10
++    DESERIALIZER = DeserializerSegWit
+ 
+ class Litecoin(Coin):
+     NAME = "Litecoin"
+diff --git a/lib/socks.py b/lib/socks.py
+index fef9498..e3a503a 100644
+--- a/lib/socks.py
++++ b/lib/socks.py
+@@ -63,7 +63,7 @@ class Socks(util.LoggedClass):
+             self.ip_address = ipaddress.ip_address(host)
+         except ValueError:
+             self.ip_address = None
+-        self.debug = False
++        self.debug = True
+ 
+     async def _socks4_handshake(self):
+         if self.ip_address:
