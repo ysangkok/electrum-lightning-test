@@ -1,0 +1,6 @@
+config-btcd1/rpc.cert
+config-btcd1/rpc.key
+config-btcd2/rpc.cert
+config-btcd2/rpc.key
+config-btcwallet/rpc.cert
+config-btcwallet/rpc.key

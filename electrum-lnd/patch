@@ -1,21 +1,30 @@
 diff --git a/chainregistry.go b/chainregistry.go
-index a7d818c..4fd26c2 100644
+index a7d818c..91ce9b5 100644
 --- a/chainregistry.go
 +++ b/chainregistry.go
 @@ -23,6 +23,7 @@ import (
  	"github.com/roasbeef/btcrpcclient"
  	"github.com/roasbeef/btcwallet/chain"
  	"github.com/roasbeef/btcwallet/walletdb"
-+  proxy "github.com/lightningnetwork/lnd/lightning-proxy"
++	proxy "github.com/lightningnetwork/lnd/lightning-proxy"
  )
  
  // defaultBitcoinForwardingPolicy is the default forwarding policy used for
-@@ -261,7 +262,7 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB) (*chainControl
+@@ -261,7 +262,8 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB) (*chainControl
  	}
  
  	cc.msgSigner = wc
 -	cc.signer = wc
-+	cc.signer = proxy.New()
++	prox := proxy.New()
++	cc.signer = prox
  	cc.chainIO = wc
  
  	// Create, and start the lnwallet, which handles the core payment
+@@ -276,6 +278,7 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB) (*chainControl
+ 		fmt.Printf("unable to start wallet: %v\n", err)
+ 		return nil, nil, err
+ 	}
++	prox.SetWallet(wallet)
+ 
+ 	ltndLog.Info("LightningWallet opened")
+ 

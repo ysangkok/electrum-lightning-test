@@ -7,3 +7,5 @@ RUN glide install
 #ENV GOPATH $GOPATH/github.com/Roasbeef/btcd/vendor
 #RUN find . -name siphash
 RUN go install . ./cmd/...
+RUN mkdir /root/.btcctl
+ADD btcctl.conf /root/.btcctl/

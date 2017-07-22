@@ -7,6 +7,7 @@ import sys
 import asyncio
 import websockets
 import logging
+import os
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -82,7 +83,7 @@ async def client():
     global globtask
     print(sys.argv[1])
     try:
-        async with websockets.connect('ws://localhost:' + sys.argv[1]) as lnd:
+        async with websockets.connect('ws://' + os.environ["ELECTRUM_LND_HOST_PORT"]) as lnd:
             while True:
                 async def f1():
                     req = await lnd.recv()

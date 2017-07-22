@@ -59,14 +59,14 @@ RUN  curl http://ftp.gnu.org/gnu/bash/bash-4.4.tar.gz | gunzip | tar x \
               LDFLAGS=-static \
               AR=$TOOLSBIN/ar \
               RANLIB=$TOOLSBIN/ranlib \
-         && make \
+         && make -j2 \
               PATH=$CCBIN:$PATH \
          && make install\
       ) \
   &&  rm -rf bash-4.4
 
 ENV CONFIG_SHELL /bin/bash
-RUN cd autoconf-2.69 && bash ./configure && make && make install
+RUN cd autoconf-2.69 && bash ./configure && make -j2 && make install
 
 #RUN mkdir patch
 #WORKDIR patch
@@ -78,7 +78,7 @@ RUN curl http://ftp.gnu.org/gnu/patch/patch-2.7.5.tar.xz | unxz | ./sltar x
 RUN cd patch-2.7.5 && touch configure && bash ./configure LDFLAGS=-static \
               AR=$TOOLSBIN/ar \
               RANLIB=$TOOLSBIN/ranlib \
-&& make && make install
+&& make -j2 && make install
 
 RUN curl -o bitcoin.zip -L https://github.com/bitcoin/bitcoin/archive/16240f43a550c9b0c34d541df5fa80c2fb43d17c.zip
 
@@ -102,7 +102,7 @@ RUN cd libtool-2.4.6 && touch configure && ./configure LDFLAGS=-static AR=$TOOLS
 
 RUN curl -L https://pkg-config.freedesktop.org/releases/pkg-config-0.29.2.tar.gz | gunzip -cd | ./sltar x
 RUN cd pkg-config* && perl -pi -e 's/^ *wait.*/true/g' configure glib/configure
-RUN cd pkg-config* && bash ./configure --with-internal-glib LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make && make install
+RUN cd pkg-config* && bash ./configure --with-internal-glib LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make -j2 && make install
 
 RUN patchelf --set-interpreter $TOOLSBIN/../lib/libc.so /usr/local/bin/pkg-config
 
@@ -116,7 +116,7 @@ RUN cd boost_* && ./b2 install || true
 RUN curl -Lo libressl.zip https://fossies.org/linux/misc/libressl-2.6.0.zip
 RUN unzip libressl*.zip
 RUN cd libressl-* && perl -pi -e 's/^ *wait.*/true/g' configure
-RUN cd libressl-* && ./configure --disable-asm LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make && make install
+RUN cd libressl-* && ./configure --disable-asm LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make -j2 && make install
 
 RUN unzip bitcoin.zip
 
@@ -126,7 +126,7 @@ RUN cd bitcoin-* && autoreconf -ivf
 
 RUN curl -L https://github.com/libevent/libevent/releases/download/release-2.1.8-stable/libevent-2.1.8-stable.tar.gz | gunzip -cd | ./sltar x
 RUN cd libevent* && perl -pi -e 's/^ *wait.*/true/g' configure
-RUN cd libevent* && ./configure --disable-openssl LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make && make install
+RUN cd libevent* && ./configure --disable-openssl LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make -j2 && make install
 
 RUN cd bitcoin-* && perl -pi -e 's/^ *wait.*/true/g' $(find . -type f -name configure)
 RUN cd bitcoin-* && perl -pi -e 's/\$\(CC_FOR_BUILD\) \$\^ -o \$@/\$(CC_FOR_BUILD) \$^ -static -o \$@/g' src/secp256k1/Makefile.am

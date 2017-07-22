@@ -5,6 +5,9 @@ services:
     entrypoint: /go/bin/btcd
     volumes:
       - ./config-btcd1:/root/.btcd
+      - ./config-btcwallet:/root/.btcwallet:ro
+    links:
+      - btcw
   btcd2:
     build: btcd
     entrypoint: /go/bin/btcd
@@ -15,12 +18,14 @@ services:
     entrypoint: /go/bin/btcwallet
     volumes:
       - ./config-btcwallet:/root/.btcwallet
+#    depends_on:
+#      - btcd1
   core:
     build: bitcoin-core
-    entrypoint: /root/bitcoin-16240f43a550c9b0c34d541df5fa80c2fb43d17c/src/bitcoind -connect=btcd1:18555 -listen=0 -debug=1 -printtoconsole -regtest -rpcpassword=donkey -rpcuser=doggman -rpclisten=18332
+    entrypoint: /bitcoin-16240f43a550c9b0c34d541df5fa80c2fb43d17c/src/bitcoind -connect=btcd1:18555 -listen=0 -printtoconsole -regtest -rpcpassword=donkey -rpcuser=doggman -rpclisten=18332 -rpcallowip=0.0.0.0/0
   elecx:
     build: electrumx
-    entrypoint: ./electrumx_server.py
+    entrypoint: su -c /electrumx/electrumx_server.py electrumx
     environment:
       - SSL_KEYFILE=/vol/key.pem
       - SSL_CERTFILE=/vol/cert.pem
@@ -28,8 +33,32 @@ services:
       - SSL_PORT=50002
       - RPC_PORT=8000
       - NET=simnet
-      - DAEMON_URL=http://doggman:donkey@127.0.0.1:18332
+      - DAEMON_URL=http://doggman:donkey@core:18332
       - DB_DIRECTORY=/tmp
+    depends_on:
+      - core
     volumes:
       - ./config-electrumx:/vol
-#TODO: lnd1, lnd2, electrum-lightning-hub
+  vanillalnd:
+    build: vanilla-lnd
+    entrypoint: /go/bin/lnd
+    volumes:
+      - ./config-vanilla-lnd:/root/.lnd
+      - ./config-btcd1:/root/.btcd:ro
+    depends_on:
+      - btcd1
+  eleclnd:
+    build: electrum-lnd
+    entrypoint: /go/bin/lnd
+    depends_on:
+      - btcd2
+    volumes:
+      - ./config-electrum-lnd:/root/.lnd
+      - ./config-btcd2:/root/.btcd:ro
+  elh:
+    build: electrum-lightning-hub
+    entrypoint: python3 /repeater_and_rpc.py
+    environment:
+      - ELECTRUM_LND_HOST_PORT=eleclnd:19283
+    depends_on:
+      - eleclnd
