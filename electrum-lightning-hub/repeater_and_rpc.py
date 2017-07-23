@@ -17,7 +17,9 @@ to_lnd = asyncio.Queue()
 async def handle_conn(conn, path):
     global q
     global to_lnd
+    global key
     try:
+        await conn.send(key)
         while True:
             print(q.qsize())
             ack_needed = q.qsize() > 0
@@ -83,13 +85,14 @@ async def handle_conn(conn, path):
         traceback.print_exc()
         globtask.cancel()
 
+key = None
+
 async def client(hostport):
-    global globtask
+    global globtask, key
     try:
         await asyncio.sleep(10)
         async with websockets.connect('ws://' + hostport) as lnd:
             key = await lnd.recv()
-            await q.put((q.qsize(), key))
             while True:
                 async def f1():
                     req = await lnd.recv()

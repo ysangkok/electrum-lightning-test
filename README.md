@@ -1,9 +1,11 @@
+after setup (see below) and `docker-compose up`, wscat `wscat --connect ws://localhost:8765` should give the master key on each connection and then the signing request
+
 setup:
 
 * create simnet btcwallet in config-btcwallet (do not overwrite the config!), but it's address in config-btcd1/btcd.conf
 * use openssl to generate key.pem and cert.pem in config-electrumx
 
-test:
+smoke tests:
 ```
 docker exec -it electrumlightningtest_btcd1_1 /go/bin/btcctl --notls generate 100
 docker exec -it electrumlightningtest_btcd1_1 /go/bin/btcctl --wallet --notls --rpcserver btcw getbalance
