@@ -15,7 +15,7 @@ services:
       - ./config-btcd2:/root/.btcd
   btcw:
     build: btcwallet
-    entrypoint: /go/bin/btcwallet
+    entrypoint: /go/bin/btcwallet --noclienttls --noservertls
     volumes:
       - ./config-btcwallet:/root/.btcwallet
 #    depends_on:
@@ -39,6 +39,9 @@ services:
       - core
     volumes:
       - ./config-electrumx:/vol
+    ports:
+      - 50001:50001
+      - 50002:50002
   vanillalnd:
     build: vanilla-lnd
     entrypoint: /go/bin/lnd
@@ -49,7 +52,7 @@ services:
       - btcd1
   eleclnd:
     build: electrum-lnd
-    entrypoint: /go/bin/lnd
+    entrypoint: /go/bin/lnd --debuglevel trace
     depends_on:
       - btcd2
     volumes:
@@ -62,3 +65,5 @@ services:
       - ELECTRUM_LND_HOST_PORT=eleclnd:19283
     depends_on:
       - eleclnd
+    ports:
+      - 8765:8765

@@ -54,7 +54,11 @@ async def handle_conn(conn, path):
             if not ack_needed: assert len(list(pending)) == 1
             if ack_needed: assert len(list(pending)) == 0
             if queue_done and recv_done:
-                await asyncio.gather(*tasks)
+                try:
+                    await asyncio.gather(*tasks)
+                except websockets.protocol.ConnectionClosed:
+                    if ack_needed: await q.put((prio, msg))
+                    break
             for p in pending: p.cancel()
             if queue_done: assert not ack_needed
             if recv_done:
@@ -79,11 +83,13 @@ async def handle_conn(conn, path):
         traceback.print_exc()
         globtask.cancel()
 
-async def client():
+async def client(hostport):
     global globtask
-    print(sys.argv[1])
     try:
-        async with websockets.connect('ws://' + os.environ["ELECTRUM_LND_HOST_PORT"]) as lnd:
+        await asyncio.sleep(10)
+        async with websockets.connect('ws://' + hostport) as lnd:
+            key = await lnd.recv()
+            await q.put((q.qsize(), key))
             while True:
                 async def f1():
                     req = await lnd.recv()
@@ -112,11 +118,11 @@ async def status():
         print("q: {} to_lnd: {}".format(q.qsize(), to_lnd.qsize()))
         await asyncio.sleep(5)
 
-server = websockets.serve(handle_conn, 'localhost', 8765)
+server = websockets.serve(handle_conn, '0.0.0.0', 8765)
 
 loop = asyncio.get_event_loop()
 loop.set_debug(True)
-l = [server, status(), client()]
+l = [server, status(), client(os.environ["ELECTRUM_LND_HOST_PORT"])]
 globtask = asyncio.ensure_future(asyncio.wait(l))
 loop.run_until_complete(globtask)
 loop.run_forever()

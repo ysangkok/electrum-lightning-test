@@ -4,3 +4,7 @@ config-btcd2/rpc.cert
 config-btcd2/rpc.key
 config-btcwallet/rpc.cert
 config-btcwallet/rpc.key
+config-btcd1/cert.pem
+config-btcd1/data/
+config-btcd1/key.pem
+config-btcd1/logs/

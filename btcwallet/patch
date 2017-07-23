@@ -1,0 +1,65 @@
+diff --git a/config.go b/config.go
+index 7219294..a917513 100644
+--- a/config.go
++++ b/config.go
+@@ -272,10 +272,8 @@ func loadConfig() (*config, []string, error) {
+ 	}
+ 
+ 	// Show the version and exit if the version flag was specified.
+-	funcName := "loadConfig"
+ 	appName := filepath.Base(os.Args[0])
+ 	appName = strings.TrimSuffix(appName, filepath.Ext(appName))
+-	usageMessage := fmt.Sprintf("Use %s -h to show usage", appName)
+ 	if preCfg.ShowVersion {
+ 		fmt.Println(appName, "version", version())
+ 		os.Exit(0)
+@@ -502,15 +500,6 @@ func loadConfig() (*config, []string, error) {
+ 		return nil, nil, err
+ 	}
+ 	if cfg.DisableClientTLS {
+-		if _, ok := localhostListeners[RPCHost]; !ok {
+-			str := "%s: the --noclienttls option may not be used " +
+-				"when connecting RPC to non localhost " +
+-				"addresses: %s"
+-			err := fmt.Errorf(str, funcName, cfg.RPCConnect)
+-			fmt.Fprintln(os.Stderr, err)
+-			fmt.Fprintln(os.Stderr, usageMessage)
+-			return nil, nil, err
+-		}
+ 	} else {
+ 		// If CAFile is unset, choose either the copy or local btcd cert.
+ 		if !cfg.CAFile.ExplicitlySet() {
+@@ -591,33 +580,6 @@ func loadConfig() (*config, []string, error) {
+ 		}
+ 	}
+ 
+-	// Only allow server TLS to be disabled if the RPC server is bound to
+-	// localhost addresses.
+-	if cfg.DisableServerTLS {
+-		allListeners := append(cfg.LegacyRPCListeners,
+-			cfg.ExperimentalRPCListeners...)
+-		for _, addr := range allListeners {
+-			host, _, err := net.SplitHostPort(addr)
+-			if err != nil {
+-				str := "%s: RPC listen interface '%s' is " +
+-					"invalid: %v"
+-				err := fmt.Errorf(str, funcName, addr, err)
+-				fmt.Fprintln(os.Stderr, err)
+-				fmt.Fprintln(os.Stderr, usageMessage)
+-				return nil, nil, err
+-			}
+-			if _, ok := localhostListeners[host]; !ok {
+-				str := "%s: the --noservertls option may not be used " +
+-					"when binding RPC to non localhost " +
+-					"addresses: %s"
+-				err := fmt.Errorf(str, funcName, addr)
+-				fmt.Fprintln(os.Stderr, err)
+-				fmt.Fprintln(os.Stderr, usageMessage)
+-				return nil, nil, err
+-			}
+-		}
+-	}
+-
+ 	// Expand environment variable and leading ~ for filepaths.
+ 	cfg.CAFile.Value = cleanAndExpandPath(cfg.CAFile.Value)
+ 	cfg.RPCCert.Value = cleanAndExpandPath(cfg.RPCCert.Value)

@@ -1,0 +1,12 @@
+diff --git a/routing/chainview/btcd.go b/routing/chainview/btcd.go
+index 336623b..f94f5bb 100644
+--- a/routing/chainview/btcd.go
++++ b/routing/chainview/btcd.go
+@@ -81,6 +81,7 @@ func NewBtcdFilteredChainView(config btcrpcclient.ConnConfig) (*BtcdFilteredChai
+ 	// defer establishing the connection to our .Start() method.
+ 	config.DisableConnectOnNew = true
+ 	config.DisableAutoReconnect = false
++	config.DisableTLS = true
+ 	chainConn, err := btcrpcclient.New(&config, ntfnCallbacks)
+ 	if err != nil {
+ 		return nil, err
