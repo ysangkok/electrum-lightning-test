@@ -1,4 +1,4 @@
-after setup (see below) and `docker-compose up`, wscat `wscat --connect ws://localhost:8765` should give the master key on each connection and then the signing request
+after setup (see below) and `docker-compose up`, wscat `wscat --connect ws://localhost:8765` should give the master key on each connection and then the signing request (if there is one, use lncli to provoke the need)
 
 setup:
 
