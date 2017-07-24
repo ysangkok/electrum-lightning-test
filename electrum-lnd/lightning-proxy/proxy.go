@@ -196,7 +196,7 @@ func loop(b *LightningProxy) {
 		go writePump(b, conn)
 		go readPump(b, conn)
 	})
-	listener, err := net.Listen("tcp", ":19283")
+	listener, err := net.Listen("tcp", "0.0.0.0:19283")
 	if err != nil {
 			panic(err)
 	}

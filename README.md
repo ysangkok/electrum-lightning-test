@@ -12,7 +12,15 @@ docker exec -it electrumlightningtest_btcd1_1 /go/bin/btcctl --wallet --notls --
 docker exec -it electrumlightningtest_btcd1_1 /go/bin/btcctl --notls generate 1
 # expect 100
 
-
 check that eleclnd is synced to chain:
 docker exec -it electrumlightningtest_eleclnd_1 /go/bin/lncli getinfo
+
+witness only walletbalance:
+docker exec -it electrumlightningtest_vanillalnd_1 /go/bin/lncli walletbalance --witness_only
+
+send to address using btcw:
+docker exec -it electrumlightningtest_btcd1_1 /go/bin/btcctl --wallet --notls --rpcserver btcw sendtoaddress rbsq31fuqS7aSHNbKHw7LgKNpPDQFn6LV4 150
+
+generate new address:
+docker exec -it electrumlightningtest_vanillalnd_1 /go/bin/lncli newaddress np2wkh
 ```

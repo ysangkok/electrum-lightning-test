@@ -8,6 +8,8 @@ services:
       - ./config-btcwallet:/root/.btcwallet:ro
     links:
       - btcw
+    ports:
+      - 18556:18556
   btcd2:
     build: btcd
     entrypoint: /go/bin/btcd
@@ -58,6 +60,8 @@ services:
     volumes:
       - ./config-electrum-lnd:/root/.lnd
       - ./config-btcd2:/root/.btcd:ro
+    ports:
+      - 19283:19283
   elh:
     build: electrum-lightning-hub
     entrypoint: python3 /repeater_and_rpc.py

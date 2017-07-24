@@ -1,12 +1,47 @@
+diff --git a/chainntnfs/btcdnotify/btcd.go b/chainntnfs/btcdnotify/btcd.go
+index 8cb4cbb..d6297b2 100644
+--- a/chainntnfs/btcdnotify/btcd.go
++++ b/chainntnfs/btcdnotify/btcd.go
+@@ -120,6 +120,7 @@ func New(config *btcrpcclient.ConnConfig) (*BtcdNotifier, error) {
+ 	// defer establishing the connection to our .Start() method.
+ 	config.DisableConnectOnNew = true
+ 	config.DisableAutoReconnect = false
++	config.DisableTLS = true
+ 	chainConn, err := btcrpcclient.New(config, ntfnCallbacks)
+ 	if err != nil {
+ 		return nil, err
+diff --git a/chainregistry.go b/chainregistry.go
+index a7d818c..51ff0e9 100644
+--- a/chainregistry.go
++++ b/chainregistry.go
+@@ -225,8 +225,7 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB) (*chainControl
+ 			Endpoint:             "ws",
+ 			User:                 btcdUser,
+ 			Pass:                 btcdPass,
+-			Certificates:         rpcCert,
+-			DisableTLS:           false,
++			DisableTLS:           true,
+ 			DisableConnectOnNew:  true,
+ 			DisableAutoReconnect: false,
+ 		}
+@@ -246,7 +245,7 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB) (*chainControl
+ 		// Create a special websockets rpc client for btcd which will be used
+ 		// by the wallet for notifications, calls, etc.
+ 		chainRPC, err := chain.NewRPCClient(activeNetParams.Params, btcdHost,
+-			btcdUser, btcdPass, rpcCert, false, 20)
++			btcdUser, btcdPass, rpcCert, true, 20)
+ 		if err != nil {
+ 			return nil, nil, err
+ 		}
 diff --git a/routing/chainview/btcd.go b/routing/chainview/btcd.go
-index 336623b..f94f5bb 100644
+index 336623b..da791c4 100644
 --- a/routing/chainview/btcd.go
 +++ b/routing/chainview/btcd.go
 @@ -81,6 +81,7 @@ func NewBtcdFilteredChainView(config btcrpcclient.ConnConfig) (*BtcdFilteredChai
  	// defer establishing the connection to our .Start() method.
  	config.DisableConnectOnNew = true
  	config.DisableAutoReconnect = false
-+	config.DisableTLS = true
++  config.DisableTLS = true
  	chainConn, err := btcrpcclient.New(&config, ntfnCallbacks)
  	if err != nil {
  		return nil, err
