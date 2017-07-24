@@ -1,0 +1,82 @@
+diff --git a/electrum b/electrum
+index 2990639f..e374a0f2 100755
+--- a/electrum
++++ b/electrum
+@@ -363,6 +363,10 @@ if __name__ == '__main__':
+         bitcoin.set_nolnet()
+         network.set_nolnet()
+ 
++    if config.get('simnet'):
++        bitcoin.set_simnet()
++        network.set_simnet()
++
+     # run non-RPC commands separately
+     if cmdname in ['create', 'restore']:
+         run_non_RPC(config)
+diff --git a/lib/bitcoin.py b/lib/bitcoin.py
+index bcc289b2..dcd4660d 100644
+--- a/lib/bitcoin.py
++++ b/lib/bitcoin.py
+@@ -75,6 +75,19 @@ def set_nolnet():
+     HEADERS_URL = "https://headers.electrum.org/nolnet_headers"
+     GENESIS = "663c88be18d07c45f87f910b93a1a71ed9ef1946cad50eb6a6f3af4c424625c6"
+ 
++def set_simnet():
++    global ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2WPKH
++    global XPRV_HEADER, XPUB_HEADER
++    global NOLNET, HEADERS_URL
++    global GENESIS
++    TESTNET = True
++    ADDRTYPE_P2PKH = 0x3f
++    ADDRTYPE_P2SH = 0x7b
++    ADDRTYPE_P2WPKH = 0xc5 # really?
++    XPRV_HEADER = 0x0420b900
++    XPUB_HEADER = 0x0420bd3a
++    HEADERS_URL = None
++    GENESIS = "683e86bd5c6d110d91b94b97137ba6bfe02dbbdb8e3dff722a669b5d69d77af6"
+ 
+ 
+ ################################## transactions
+diff --git a/lib/commands.py b/lib/commands.py
+index e0552762..4915838b 100644
+--- a/lib/commands.py
++++ b/lib/commands.py
+@@ -810,6 +810,7 @@ def add_global_options(parser):
+     group.add_argument("--testnet", action="store_true", dest="testnet", default=False, help="Use Testnet")
+     group.add_argument("--segwit", action="store_true", dest="segwit", default=False, help="The Wizard will create Segwit seed phrases (Testnet only).")
+     group.add_argument("--nolnet", action="store_true", dest="nolnet", default=False, help="Use Nolnet")
++    group.add_argument("--simnet", action="store_true", dest="simnet", default=False, help="Use Simnet")
+ 
+ def get_parser():
+     # create main parser
+diff --git a/lib/network.py b/lib/network.py
+index 488a4244..8241f7c4 100644
+--- a/lib/network.py
++++ b/lib/network.py
+@@ -92,6 +92,13 @@ def set_nolnet():
+         '14.3.140.101': DEFAULT_PORTS,
+     }
+ 
++def set_simnet():
++    global DEFAULT_PORTS, DEFAULT_SERVERS
++    DEFAULT_PORTS = {'t':'50001', 's':'50002'}
++    DEFAULT_SERVERS = {
++        '127.0.0.1': DEFAULT_PORTS,
++    }
++
+ NODES_RETRY_INTERVAL = 60
+ SERVER_RETRY_INTERVAL = 10
+ 
+diff --git a/lib/simple_config.py b/lib/simple_config.py
+index 748702af..2592d659 100644
+--- a/lib/simple_config.py
++++ b/lib/simple_config.py
+@@ -84,6 +84,8 @@ class SimpleConfig(PrintError):
+             path = os.path.join(path, 'testnet')
+         elif self.get('nolnet'):
+             path = os.path.join(path, 'nolnet')
++        elif self.get('simnet'):
++            path = os.path.join(path, 'simnet')
+ 
+         # Make directory if it does not yet exist.
+         if not os.path.exists(path):
