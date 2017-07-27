@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"github.com/gorilla/websocket"
 	"net"
+  "fmt"
 )
 
 type LightningProxy struct {
@@ -68,36 +69,79 @@ func serialize(s *lnwallet.SignDescriptor) ([]byte) {
 	var buf bytes.Buffer
 	writer := bufio.NewWriter(&buf)
 
+  var err error
 	if s.PubKey != nil {
-		buf.Write(s.PubKey.SerializeCompressed())
+		_, err = buf.Write(s.PubKey.SerializeCompressed())
+    if err != nil { panic("conv0 failed"); }
 	} else {
 		for i:=0; i<33; i++ {
 			buf.WriteByte(0)
 		}
 	}
+	if (binary.Write(writer, binary.BigEndian, int16(len(s.PrivateTweak))) != nil) { panic("conv1 failed"); }
+	writer.Flush()
+
 	buf.Write(s.PrivateTweak)
+
+	if (binary.Write(writer, binary.BigEndian, int16(len(s.WitnessScript))) != nil) { panic("conv2 failed"); }
+	writer.Flush()
+
 	buf.Write(s.WitnessScript)
 
-	binary.Write(writer, binary.BigEndian, s.Output.Value)
+	if (binary.Write(writer, binary.BigEndian, s.Output.Value) != nil) { panic("conv3 failed"); }
+	writer.Flush()
+
+	if (binary.Write(writer, binary.BigEndian, int16(len(s.Output.PkScript))) != nil) { panic("conv4 failed"); }
 	writer.Flush()
 
 	buf.Write(s.Output.PkScript)
 
-	binary.Write(writer, binary.BigEndian, s.HashType)
+	if (binary.Write(writer, binary.BigEndian, s.HashType) != nil) { panic("conv5 failed"); }
 	writer.Flush()
 
-	buf.Write(s.SigHashes.HashPrevOuts[:])
-	buf.Write(s.SigHashes.HashSequence[:])
-	buf.Write(s.SigHashes.HashOutputs[:])
-	return buf.Bytes()
+	_, err = buf.Write(s.SigHashes.HashPrevOuts[:])
+  if err != nil { panic("conv6 failed"); }
+	_, err = buf.Write(s.SigHashes.HashSequence[:])
+  if err != nil { panic("conv7 failed"); }
+	_, err = buf.Write(s.SigHashes.HashOutputs[:])
+  if err != nil { panic("conv8 failed"); }
+
+	if (binary.Write(writer, binary.BigEndian, int64(len(s.InputIndex))) != nil) { panic("conv9 failed"); }
+	writer.Flush()
+
+	bajts := buf.Bytes()
+
+	var lenbuf bytes.Buffer
+	lenwriter := bufio.NewWriter(&lenbuf)
+	err = binary.Write(lenwriter, binary.BigEndian, int16(len(bajts)))
+  if err != nil { panic("conv9 failed"); }
+	lenwriter.Flush()
+
+	return append(lenbuf.Bytes(), bajts...)
 }
 
 func serializetx(tx *wire.MsgTx, signDesc *lnwallet.SignDescriptor) ([]byte) {
 		var byts []byte
 		var buf bytes.Buffer
-		tx.Serialize(&buf)
-		byts = append(byts, buf.Bytes()...)
-		byts = append(byts, serialize(signDesc)...)
+		if tx.Serialize(&buf) != nil {
+      panic("could not serialize transaction")
+    }
+		bajts := buf.Bytes()
+
+		var lenbuf bytes.Buffer
+		lenwriter := bufio.NewWriter(&lenbuf)
+		err := binary.Write(lenwriter, binary.BigEndian, int16(len(bajts)))
+    if err != nil {
+      panic("could not write tx length")
+    }
+		lenwriter.Flush()
+
+    part1 := lenbuf.Bytes()
+    part2 := buf.Bytes()
+    part3 := serialize(signDesc)
+		byts = append(byts, part1...)
+		byts = append(byts, part2...)
+		byts = append(byts, part3...)
 		return byts
 }
 
@@ -119,9 +163,13 @@ func (b *LightningProxy) ComputeInputScript(tx *wire.MsgTx,
 		var witnesses = make([][]byte, numWitnessArray)
 		var reader = bufio.NewReader(bytes.NewBuffer(msg[2:]))
 		for i:= 0; i<int(numWitnessArray); i++ {
-			var numWitnesses uint16
-			err := binary.Read(reader, binary.BigEndian, &numWitnesses)
-			var these = make([]byte, numWitnesses)
+			var sizeWitness uint16
+			err := binary.Read(reader, binary.BigEndian, &sizeWitness)
+      if err != nil {
+        log.Fatal("could not read number of witnesses")
+        return nil, errors.New("could not read number of witnesses")
+      }
+			var these = make([]byte, sizeWitness)
 			num, err := reader.Read(these)
 			if err != nil || num < 1 {
 				log.Fatal("noooo, ran out of bytes while reading in ComputeInputScript")
@@ -139,7 +187,11 @@ func (b *LightningProxy) ComputeInputScript(tx *wire.MsgTx,
 			writer.WriteByte(bajt)
 		}
 		writer.Flush()
-		var inputScript = lnwallet.InputScript{ Witness: witnesses, ScriptSig: scriptBuf.Bytes() }
+    scriptSigBytes := scriptBuf.Bytes()
+    if len(scriptSigBytes) == 0 {
+      scriptSigBytes = nil
+    }
+		var inputScript = lnwallet.InputScript{ Witness: witnesses, ScriptSig: scriptSigBytes }
 		return &inputScript, nil
 }
 
@@ -220,8 +272,8 @@ func New() (*LightningProxy) {
 
 func (b *LightningProxy) SetWallet(w *lnwallet.LightningWallet) {
 	var root *btcec.PrivateKey
-  var err error
-  root, err = w.FetchRootKey()
+	var err error
+	root, err = w.FetchRootKey()
 	if err != nil {
 		panic(err)
 	}

@@ -38,10 +38,22 @@ index bcc289b2..dcd4660d 100644
  
  ################################## transactions
 diff --git a/lib/commands.py b/lib/commands.py
-index e0552762..4915838b 100644
+index e0552762..3f5b75d9 100644
 --- a/lib/commands.py
 +++ b/lib/commands.py
-@@ -810,6 +810,7 @@ def add_global_options(parser):
+@@ -663,6 +663,11 @@ class Commands:
+         # for the python console
+         return sorted(known_commands.keys())
+ 
++    @command('')
++    def listenandsign(self):
++        import lightning
++        return lightning.listen_and_sign(self.wallet)
++
+ param_descriptions = {
+     'privkey': 'Private key. Type \'?\' to get a prompt.',
+     'destination': 'Bitcoin address, contact or alias',
+@@ -810,6 +815,7 @@ def add_global_options(parser):
      group.add_argument("--testnet", action="store_true", dest="testnet", default=False, help="Use Testnet")
      group.add_argument("--segwit", action="store_true", dest="segwit", default=False, help="The Wizard will create Segwit seed phrases (Testnet only).")
      group.add_argument("--nolnet", action="store_true", dest="nolnet", default=False, help="Use Nolnet")
@@ -49,8 +61,105 @@ index e0552762..4915838b 100644
  
  def get_parser():
      # create main parser
+diff --git a/lib/lightning.py b/lib/lightning.py
+new file mode 100644
+index 00000000..0fa7241a
+--- /dev/null
++++ b/lib/lightning.py
+@@ -0,0 +1,91 @@
++from __future__ import print_function
++from websocket import WebSocketApp
++import websocket
++import keystore
++import struct
++
++signer_key = None
++signer_read_key = False
++def on_message(ws, message):
++    global signer_key, signer_read_key
++
++    def toint(x):
++      if len(x) == 2:
++        fmt = ">h"
++      elif len(x) == 4:
++        fmt = ">i"
++      elif len(x) == 8:
++        fmt = ">q"
++      else:
++        assert False
++      return struct.unpack(fmt, x)[0]
++
++    if not signer_read_key:
++        signer_key = message
++        signer_read_key = True
++        print("read key")
++        return
++    k = keystore.BIP32_KeyStore({})
++    k.add_xprv_from_seed(bytes(signer_key), 0, 'm/0/0')
++    print(k)
++    if message[:len("SignOutputRaw")] == "SignOutputRaw":
++      rest = message[len("SignOutputRaw"):]
++      print("SignOutputRaw")
++    elif message[:len("ComputeInputScript")] == "ComputeInputScript":
++      rest = message[len("ComputeInputScript"):]
++      print("ComputeInputScript")
++      txlen = toint(rest[:2]); rest = rest[2:]
++      print("txlen", txlen)
++      tx = rest[:txlen]; rest = rest[txlen:]
++    else:
++      assert False
++
++    overalllength = toint(rest[:2]); rest = rest[2:]
++    if overalllength != len(rest):
++      print(overalllength, len(rest))
++      assert False
++
++
++    pubkey = rest[:33]; rest = rest[33:]
++
++    privatetweaklen = toint(rest[:2]); rest = rest[2:]
++    print("privatetweaklen", privatetweaklen)
++    assert len(rest) > privatetweaklen
++    privatetweak = rest[:privatetweaklen]; rest = rest[privatetweaklen:]
++    assert len(privatetweak) == privatetweaklen
++    witnessscriptlen = toint(rest[:2]); rest = rest[2:]
++    print("witnessscriptlen", witnessscriptlen)
++    assert len(rest) > witnessscriptlen
++    witnessscript = rest[:witnessscriptlen]; rest = rest[witnessscriptlen:]
++    assert len(witnessscript) == witnessscriptlen
++    assert len(rest) > 4
++    outputvalue = toint(rest[:8]); rest = rest[8:]
++    outputpkscriptlen = toint(rest[:2]); rest = rest[2:]
++    outputpkscript = rest[:outputpkscriptlen]; rest = rest[outputpkscriptlen:]
++    if len(outputpkscript) != outputpkscriptlen:
++      print(len(outputpkscript), outputpkscriptlen)
++      assert False
++
++    hashoutputs = rest[-32:]; rest = rest[:len(rest)-32]
++    assert len(hashoutputs) == 32
++    hashsequence = rest[-32:]; rest = rest[:len(rest)-32]
++    assert len(hashsequence) == 32
++    hashprevouts = rest[-32:]; rest = rest[:len(rest)-32]
++    assert len(hashprevouts) == 32
++    hashtype = rest[-4:]; rest = rest[:-4]
++    assert len(hashtype) == 4
++
++    if len(rest) != 0:
++      print(b"rest not empty: " + rest)
++      assert False
++
++    print(locals())
++
++
++def listen_and_sign(wallet):
++        websocket.enableTrace(True)
++        handlers = {
++          "on_message": on_message
++        }
++        ws = WebSocketApp('ws://localhost:8765/', **handlers)
++        ws.run_forever()
 diff --git a/lib/network.py b/lib/network.py
-index 488a4244..8241f7c4 100644
+index bef1a120..eeb25dfa 100644
 --- a/lib/network.py
 +++ b/lib/network.py
 @@ -92,6 +92,13 @@ def set_nolnet():
