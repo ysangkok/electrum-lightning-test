@@ -38,10 +38,10 @@ index bcc289b2..dcd4660d 100644
  
  ################################## transactions
 diff --git a/lib/commands.py b/lib/commands.py
-index e0552762..3f5b75d9 100644
+index 442228ee..7b853b52 100644
 --- a/lib/commands.py
 +++ b/lib/commands.py
-@@ -663,6 +663,11 @@ class Commands:
+@@ -669,6 +669,11 @@ class Commands:
          # for the python console
          return sorted(known_commands.keys())
  
@@ -53,7 +53,7 @@ index e0552762..3f5b75d9 100644
  param_descriptions = {
      'privkey': 'Private key. Type \'?\' to get a prompt.',
      'destination': 'Bitcoin address, contact or alias',
-@@ -810,6 +815,7 @@ def add_global_options(parser):
+@@ -818,6 +823,7 @@ def add_global_options(parser):
      group.add_argument("--testnet", action="store_true", dest="testnet", default=False, help="Use Testnet")
      group.add_argument("--segwit", action="store_true", dest="segwit", default=False, help="The Wizard will create Segwit seed phrases (Testnet only).")
      group.add_argument("--nolnet", action="store_true", dest="nolnet", default=False, help="Use Nolnet")
@@ -63,10 +63,10 @@ index e0552762..3f5b75d9 100644
      # create main parser
 diff --git a/lib/lightning.py b/lib/lightning.py
 new file mode 100644
-index 00000000..0fa7241a
+index 00000000..43a87937
 --- /dev/null
 +++ b/lib/lightning.py
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,92 @@
 +from __future__ import print_function
 +from websocket import WebSocketApp
 +import websocket
@@ -117,11 +117,12 @@ index 00000000..0fa7241a
 +
 +    pubkey = rest[:33]; rest = rest[33:]
 +
-+    privatetweaklen = toint(rest[:2]); rest = rest[2:]
-+    print("privatetweaklen", privatetweaklen)
-+    assert len(rest) > privatetweaklen
-+    privatetweak = rest[:privatetweaklen]; rest = rest[privatetweaklen:]
-+    assert len(privatetweak) == privatetweaklen
++    singletweaklen = toint(rest[:2]); rest = rest[2:]
++    print("singletweaklen", singletweaklen)
++    assert len(rest) > singletweaklen
++    singletweak = rest[:singletweaklen]; rest = rest[singletweaklen:]
++    assert len(singletweak) == singletweaklen
++    doubletweak = rest[:32]; rest = rest[32:]
 +    witnessscriptlen = toint(rest[:2]); rest = rest[2:]
 +    print("witnessscriptlen", witnessscriptlen)
 +    assert len(rest) > witnessscriptlen
@@ -159,7 +160,7 @@ index 00000000..0fa7241a
 +        ws = WebSocketApp('ws://localhost:8765/', **handlers)
 +        ws.run_forever()
 diff --git a/lib/network.py b/lib/network.py
-index bef1a120..eeb25dfa 100644
+index 1a45c313..d46548be 100644
 --- a/lib/network.py
 +++ b/lib/network.py
 @@ -92,6 +92,13 @@ def set_nolnet():
@@ -177,7 +178,7 @@ index bef1a120..eeb25dfa 100644
  SERVER_RETRY_INTERVAL = 10
  
 diff --git a/lib/simple_config.py b/lib/simple_config.py
-index 748702af..2592d659 100644
+index 9be6fdc9..d1af7757 100644
 --- a/lib/simple_config.py
 +++ b/lib/simple_config.py
 @@ -84,6 +84,8 @@ class SimpleConfig(PrintError):

@@ -1,0 +1,148 @@
+diff --git a/lnwallet/btcwallet/signer.go b/lnwallet/btcwallet/signer.go
+index bf679e8..3b14321 100644
+--- a/lnwallet/btcwallet/signer.go
++++ b/lnwallet/btcwallet/signer.go
+@@ -12,6 +12,9 @@ import (
+ 	"github.com/roasbeef/btcutil"
+ 	"github.com/roasbeef/btcwallet/waddrmgr"
+ 	base "github.com/roasbeef/btcwallet/wallet"
++	"bytes"
++	"bufio"
++	"encoding/binary"
+ )
+ 
+ // FetchInputInfo queries for the WalletController's knowledge of the passed
+@@ -151,6 +154,100 @@ func (b *BtcWallet) SignOutputRaw(tx *wire.MsgTx,
+ 	return sig[:len(sig)-1], nil
+ }
+ 
++func serialize(s *lnwallet.SignDescriptor) ([]byte) {
++	var buf bytes.Buffer
++	writer := bufio.NewWriter(&buf)
++
++	var err error
++	if s.PubKey != nil {
++		_, err = buf.Write(s.PubKey.SerializeCompressed())
++		if err != nil { panic("conv0 failed"); }
++	} else {
++		for i:=0; i<33; i++ {
++			buf.WriteByte(0)
++		}
++	}
++	if (binary.Write(writer, binary.BigEndian, int16(len(s.SingleTweak))) != nil) { panic("conv1 failed"); }
++	writer.Flush()
++
++	buf.Write(s.SingleTweak)
++
++	if s.DoubleTweak != nil {
++		bajts := s.DoubleTweak.Serialize()
++		if len(bajts) != 32 {
++			panic("weird length")
++		}
++		_, err = buf.Write(bajts)
++		if err != nil { panic("conv1.5 failed"); }
++	} else {
++		for i:=0; i<32; i++ {
++			buf.WriteByte(0)
++		}
++	}
++
++	if (binary.Write(writer, binary.BigEndian, int16(len(s.WitnessScript))) != nil) { panic("conv2 failed"); }
++	writer.Flush()
++
++	buf.Write(s.WitnessScript)
++
++	if (binary.Write(writer, binary.BigEndian, s.Output.Value) != nil) { panic("conv3 failed"); }
++	writer.Flush()
++
++	if (binary.Write(writer, binary.BigEndian, int16(len(s.Output.PkScript))) != nil) { panic("conv4 failed"); }
++	writer.Flush()
++
++	buf.Write(s.Output.PkScript)
++
++	if (binary.Write(writer, binary.BigEndian, s.HashType) != nil) { panic("conv5 failed"); }
++	writer.Flush()
++
++	_, err = buf.Write(s.SigHashes.HashPrevOuts[:])
++	if err != nil { panic("conv6 failed"); }
++	_, err = buf.Write(s.SigHashes.HashSequence[:])
++	if err != nil { panic("conv7 failed"); }
++	_, err = buf.Write(s.SigHashes.HashOutputs[:])
++	if err != nil { panic("conv8 failed"); }
++
++	if (binary.Write(writer, binary.BigEndian, int64(s.InputIndex)) != nil) { panic("conv9 failed"); }
++	writer.Flush()
++
++	bajts := buf.Bytes()
++
++	var lenbuf bytes.Buffer
++	lenwriter := bufio.NewWriter(&lenbuf)
++	err = binary.Write(lenwriter, binary.BigEndian, int16(len(bajts)))
++	if err != nil { panic("conv9 failed"); }
++	lenwriter.Flush()
++
++	return append(lenbuf.Bytes(), bajts...)
++}
++
++func serializetx(tx *wire.MsgTx, signDesc *lnwallet.SignDescriptor) ([]byte) {
++		var byts []byte
++		var buf bytes.Buffer
++		if tx.Serialize(&buf) != nil {
++			panic("could not serialize transaction")
++		}
++		bajts := buf.Bytes()
++
++		var lenbuf bytes.Buffer
++		lenwriter := bufio.NewWriter(&lenbuf)
++		err := binary.Write(lenwriter, binary.BigEndian, int16(len(bajts)))
++		if err != nil {
++			panic("could not write tx length")
++		}
++		lenwriter.Flush()
++
++		part1 := lenbuf.Bytes()
++		part2 := buf.Bytes()
++		part3 := serialize(signDesc)
++		byts = append(byts, part1...)
++		byts = append(byts, part2...)
++		byts = append(byts, part3...)
++		return byts
++}
++
++
+ // ComputeInputScript generates a complete InputIndex for the passed
+ // transaction with the signature as defined within the passed SignDescriptor.
+ // This method is capable of generating the proper input script for both
+@@ -159,15 +256,19 @@ func (b *BtcWallet) SignOutputRaw(tx *wire.MsgTx,
+ // This is a part of the WalletController interface.
+ func (b *BtcWallet) ComputeInputScript(tx *wire.MsgTx,
+ 	signDesc *lnwallet.SignDescriptor) (*lnwallet.InputScript, error) {
++	bajts := serializetx(tx, signDesc)
++	fmt.Printf("SERIALIZED TX AND SIGNDESC %v\n", bajts)
+ 
+ 	outputScript := signDesc.Output.PkScript
+ 	walletAddr, err := b.fetchOutputAddr(outputScript)
++	fmt.Printf("WALLETADDR %v\n", walletAddr)
+ 	if err != nil {
+ 		return nil, nil
+ 	}
+ 
+ 	pka := walletAddr.(waddrmgr.ManagedPubKeyAddress)
+ 	privKey, err := pka.PrivKey()
++	fmt.Printf("PRIVKEY %v\n", privKey.Serialize())
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -234,6 +335,12 @@ func (b *BtcWallet) ComputeInputScript(tx *wire.MsgTx,
+ 
+ 	inputScript.Witness = witnessScript
+ 
++	fmt.Printf("INPUTSCRIPT SCRIPTSIG %v\n", inputScript.ScriptSig)
++	if inputScript.Witness != nil {
++		for j, w := range inputScript.Witness {
++			fmt.Printf("INPUTSCRIPT WITNESS %v %v\n", j, w)
++		}
++	}
+ 	return inputScript, nil
+ }
+ 
