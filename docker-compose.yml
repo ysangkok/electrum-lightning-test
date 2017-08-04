@@ -54,6 +54,14 @@ services:
       - ./config-btcd1:/root/.btcd:ro
     depends_on:
       - btcd1
+  vanillalnd2:
+    build: vanilla-lnd
+    entrypoint: /go/bin/lnd
+    volumes:
+      - ./config-vanilla-lnd2:/root/.lnd
+      - ./config-btcd1:/root/.btcd:ro
+    depends_on:
+      - btcd1
   eleclnd:
     build: electrum-lnd
     entrypoint: /go/bin/lnd --debuglevel trace
