@@ -1,0 +1,19 @@
+package: github.com/ysangkok/electrum-lightning-test
+import:
+- package: github.com/roasbeef/btcd
+  version: 34fdda7d41cc47d9456550fd1147a77db89f601a
+  subpackages:
+  - blockchain
+  - btcec
+  - btcjson
+  - chaincfg
+  - txscript
+  - wire
+  - connmgr
+- package: github.com/roasbeef/btcutil
+  version: a259eaf2ec1b54653cdd67848a41867f280797ee
+  subpackages:
+  - bloom
+  - coinset
+  - hdkeychain
+  - txsort

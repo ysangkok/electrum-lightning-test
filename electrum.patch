@@ -63,10 +63,10 @@ index 442228ee..7b853b52 100644
      # create main parser
 diff --git a/lib/lightning.py b/lib/lightning.py
 new file mode 100644
-index 00000000..43a87937
+index 00000000..1af110aa
 --- /dev/null
 +++ b/lib/lightning.py
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,105 @@
 +from __future__ import print_function
 +from websocket import WebSocketApp
 +import websocket
@@ -131,10 +131,15 @@ index 00000000..43a87937
 +    assert len(rest) > 4
 +    outputvalue = toint(rest[:8]); rest = rest[8:]
 +    outputpkscriptlen = toint(rest[:2]); rest = rest[2:]
++    assert len(rest) > outputpkscriptlen
 +    outputpkscript = rest[:outputpkscriptlen]; rest = rest[outputpkscriptlen:]
 +    if len(outputpkscript) != outputpkscriptlen:
 +      print(len(outputpkscript), outputpkscriptlen)
 +      assert False
++
++    inputindex = rest[-8:]; rest = rest[:-8]
++    assert len(inputindex) == 8
++    inputindex = toint(inputindex)
 +
 +    hashoutputs = rest[-32:]; rest = rest[:len(rest)-32]
 +    assert len(hashoutputs) == 32
@@ -146,8 +151,16 @@ index 00000000..43a87937
 +    assert len(hashtype) == 4
 +
 +    if len(rest) != 0:
-+      print(b"rest not empty: " + rest)
++      print(b"rest not empty: " + str(len(rest)))
 +      assert False
++
++    del message
++    if doubletweak == "\x00"*32:
++      doubletweak = None
++    if len(singletweak) == 0:
++      singletweak = None
++    if len(witnessscript) == 0:
++      witnessscript = None
 +
 +    print(locals())
 +

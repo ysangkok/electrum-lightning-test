@@ -1,5 +1,7 @@
-package main
+package test
 
+import "testing"
+//# btcd master branch on aug 4, 2017
 import "github.com/roasbeef/btcd/chaincfg"
 import "github.com/roasbeef/btcd/txscript"
 import "github.com/roasbeef/btcd/chaincfg/chainhash"
@@ -13,6 +15,8 @@ import "io"
 import "math"
 import "math/big"
 import "crypto/sha256"
+import "time"
+import "reflect"
 
 const (
 	// MaxVarIntPayload is the maximum payload size for a variable length integer.
@@ -86,6 +90,20 @@ func (l binaryFreeList) Borrow() []byte {
 		buf = make([]byte, 8)
 	}
 	return buf[:8]
+}
+
+// Uint32 reads four bytes from the provided reader using a buffer from the
+// free list, converts it to a number using the provided byte order, and returns
+// the resulting uint32.
+func (l binaryFreeList) Uint32(r io.Reader, byteOrder binary.ByteOrder) (uint32, error) {
+	buf := l.Borrow()[:4]
+	if _, err := io.ReadFull(r, buf); err != nil {
+		l.Return(buf)
+		return 0, err
+	}
+	rv := byteOrder.Uint32(buf)
+	l.Return(buf)
+	return rv, nil
 }
 
 // Return puts the provided byte slice back on the free list.  The buffer MUST
@@ -1245,8 +1263,729 @@ func maybeTweakPrivKey(signDesc *SignDescriptor,
 	return retPriv, nil
 }
 
-func main() {
+func ReadVarInt(r io.Reader, pver uint32) (uint64, error) {
+    discriminant, err := binarySerializer.Uint8(r)
+    if err != nil {
+        return 0, err
+    }
 
+    var rv uint64
+    switch discriminant {
+    case 0xff:
+        sv, err := binarySerializer.Uint64(r, littleEndian)
+        if err != nil {
+            return 0, err
+        }
+        rv = sv
+
+        // The encoding is not canonical if the value could have been
+        // encoded using fewer bytes.
+        min := uint64(0x100000000)
+        if rv < min {
+            panic("ReadVarInt")
+        }
+
+    case 0xfe:
+        sv, err := binarySerializer.Uint32(r, littleEndian)
+        if err != nil {
+            return 0, err
+        }
+        rv = uint64(sv)
+
+        // The encoding is not canonical if the value could have been
+        // encoded using fewer bytes.
+        min := uint64(0x10000)
+        if rv < min {
+            panic("ReadVarInt")
+        }
+
+    case 0xfd:
+        sv, err := binarySerializer.Uint16(r, littleEndian)
+        if err != nil {
+            return 0, err
+        }
+        rv = uint64(sv)
+
+        // The encoding is not canonical if the value could have been
+        // encoded using fewer bytes.
+        min := uint64(0xfd)
+        if rv < min {
+            panic("ReadVarInt")
+        }
+
+    default:
+        rv = uint64(discriminant)
+    }
+
+    return rv, nil
+}
+
+// Uint16 reads two bytes from the provided reader using a buffer from the
+// free list, converts it to a number using the provided byte order, and returns
+// the resulting uint16.
+func (l binaryFreeList) Uint16(r io.Reader, byteOrder binary.ByteOrder) (uint16, error) {
+	buf := l.Borrow()[:2]
+	if _, err := io.ReadFull(r, buf); err != nil {
+		l.Return(buf)
+		return 0, err
+	}
+	rv := byteOrder.Uint16(buf)
+	l.Return(buf)
+	return rv, nil
+}
+
+// Uint8 reads a single byte from the provided reader using a buffer from the
+// free list and returns it as a uint8.
+func (l binaryFreeList) Uint8(r io.Reader) (uint8, error) {
+	buf := l.Borrow()[:1]
+	if _, err := io.ReadFull(r, buf); err != nil {
+		l.Return(buf)
+		return 0, err
+	}
+	rv := buf[0]
+	l.Return(buf)
+	return rv, nil
+}
+
+// Uint64 reads eight bytes from the provided reader using a buffer from the
+// free list, converts it to a number using the provided byte order, and returns
+// the resulting uint64.
+func (l binaryFreeList) Uint64(r io.Reader, byteOrder binary.ByteOrder) (uint64, error) {
+	buf := l.Borrow()[:8]
+	if _, err := io.ReadFull(r, buf); err != nil {
+		l.Return(buf)
+		return 0, err
+	}
+	rv := byteOrder.Uint64(buf)
+	l.Return(buf)
+	return rv, nil
+}
+
+// scriptFreeList defines a free list of byte slices (up to the maximum number
+// defined by the freeListMaxItems constant) that have a cap according to the
+// freeListMaxScriptSize constant.  It is used to provide temporary buffers for
+// deserializing scripts in order to greatly reduce the number of allocations
+// required.
+//
+// The caller can obtain a buffer from the free list by calling the Borrow
+// function and should return it via the Return function when done using it.
+type scriptFreeList chan []byte
+
+// Return puts the provided byte slice back on the free list when it has a cap
+// of the expected length.  The buffer is expected to have been obtained via
+// the Borrow function.  Any slices that are not of the appropriate size, such
+// as those whose size is greater than the largest allowed free list item size
+// are simply ignored so they can go to the garbage collector.
+func (c scriptFreeList) Return(buf []byte) {
+	// Ignore any buffers returned that aren't the expected size for the
+	// free list.
+	if cap(buf) != 1000 {
+		return
+	}
+
+	// Return the buffer to the free list when it's not full.  Otherwise let
+	// it be garbage collected.
+	select {
+	case c <- buf:
+	default:
+		// Let it go to the garbage collector.
+	}
+}
+
+// readTxIn reads the next sequence of bytes from r as a transaction input
+// (TxIn).
+func readTxIn(r io.Reader, pver uint32, version int32, ti *TxIn) error {
+	err := readOutPoint(r, pver, version, &ti.PreviousOutPoint)
+	if err != nil {
+		return err
+	}
+
+	ti.SignatureScript, err = readScript(r, pver, 10000,
+		"transaction input signature script")
+	if err != nil {
+		return err
+	}
+
+	return readElement(r, &ti.Sequence)
+}
+
+// readScript reads a variable length byte array that represents a transaction
+// script.  It is encoded as a varInt containing the length of the array
+// followed by the bytes themselves.  An error is returned if the length is
+// greater than the passed maxAllowed parameter which helps protect against
+// memory exhuastion attacks and forced panics thorugh malformed messages.  The
+// fieldName parameter is only used for the error message so it provides more
+// context in the error.
+func readScript(r io.Reader, pver uint32, maxAllowed uint32, fieldName string) ([]byte, error) {
+	count, err := ReadVarInt(r, pver)
+	if err != nil {
+		return nil, err
+	}
+
+	// Prevent byte array larger than the max message size.  It would
+	// be possible to cause memory exhaustion and panics without a sane
+	// upper bound on this count.
+	if count > uint64(maxAllowed) {
+		str := fmt.Sprintf("%s is larger than the max allowed size "+
+			"[count %d, max %d]", fieldName, count, maxAllowed)
+		return nil, errors.New(str)
+	}
+
+	b := scriptPool.Borrow(count)
+	_, err = io.ReadFull(r, b)
+	if err != nil {
+		scriptPool.Return(b)
+		return nil, err
+	}
+	return b, nil
+}
+
+// Borrow returns a byte slice from the free list with a length according the
+// provided size.  A new buffer is allocated if there are any items available.
+//
+// When the size is larger than the max size allowed for items on the free list
+// a new buffer of the appropriate size is allocated and returned.  It is safe
+// to attempt to return said buffer via the Return function as it will be
+// ignored and allowed to go the garbage collector.
+func (c scriptFreeList) Borrow(size uint64) []byte {
+	if size > 1000 {
+		return make([]byte, size)
+	}
+
+	var buf []byte
+	select {
+	case buf = <-c:
+	default:
+		buf = make([]byte, 1000)
+	}
+	return buf[:size]
+}
+
+// readElement reads the next sequence of bytes from r using little endian
+// depending on the concrete type of element pointed to.
+func readElement(r io.Reader, element interface{}) error {
+	// Attempt to read the element based on the concrete type via fast
+	// type assertions first.
+	switch e := element.(type) {
+	case *int32:
+		rv, err := binarySerializer.Uint32(r, littleEndian)
+		if err != nil {
+			return err
+		}
+		*e = int32(rv)
+		return nil
+
+	case *uint32:
+		rv, err := binarySerializer.Uint32(r, littleEndian)
+		if err != nil {
+			return err
+		}
+		*e = rv
+		return nil
+
+	case *int64:
+		rv, err := binarySerializer.Uint64(r, littleEndian)
+		if err != nil {
+			return err
+		}
+		*e = int64(rv)
+		return nil
+
+	case *uint64:
+		rv, err := binarySerializer.Uint64(r, littleEndian)
+		if err != nil {
+			return err
+		}
+		*e = rv
+		return nil
+
+	case *bool:
+		rv, err := binarySerializer.Uint8(r)
+		if err != nil {
+			return err
+		}
+		if rv == 0x00 {
+			*e = false
+		} else {
+			*e = true
+		}
+		return nil
+
+	// Unix timestamp encoded as a uint32.
+	case *uint32Time:
+		rv, err := binarySerializer.Uint32(r, binary.LittleEndian)
+		if err != nil {
+			return err
+		}
+		*e = uint32Time(time.Unix(int64(rv), 0))
+		return nil
+
+	// Unix timestamp encoded as an int64.
+	case *int64Time:
+		rv, err := binarySerializer.Uint64(r, binary.LittleEndian)
+		if err != nil {
+			return err
+		}
+		*e = int64Time(time.Unix(int64(rv), 0))
+		return nil
+
+	// Message header checksum.
+	case *[4]byte:
+		_, err := io.ReadFull(r, e[:])
+		if err != nil {
+			return err
+		}
+		return nil
+
+	// IP address.
+	case *[16]byte:
+		_, err := io.ReadFull(r, e[:])
+		if err != nil {
+			return err
+		}
+		return nil
+
+	case *chainhash.Hash:
+		_, err := io.ReadFull(r, e[:])
+		if err != nil {
+			return err
+		}
+		return nil
+
+	}
+
+	// Fall back to the slower binary.Read if a fast path was not available
+	// above.
+	return binary.Read(r, littleEndian, element)
+}
+
+// uint32Time represents a unix timestamp encoded with a uint32.  It is used as
+// a way to signal the readElement function how to decode a timestamp into a Go
+// time.Time since it is otherwise ambiguous.
+type uint32Time time.Time
+
+// int64Time represents a unix timestamp encoded with an int64.  It is used as
+// a way to signal the readElement function how to decode a timestamp into a Go
+// time.Time since it is otherwise ambiguous.
+type int64Time time.Time
+
+// readOutPoint reads the next sequence of bytes from r as an OutPoint.
+func readOutPoint(r io.Reader, pver uint32, version int32, op *OutPoint) error {
+	_, err := io.ReadFull(r, op.Hash[:])
+	if err != nil {
+		return err
+	}
+
+	op.Index, err = binarySerializer.Uint32(r, littleEndian)
+	return err
+}
+
+// Create the concurrent safe free list to use for script deserialization.  As
+// previously described, this free list is maintained to significantly reduce
+// the number of allocations.
+var scriptPool scriptFreeList = make(chan []byte, 1000)
+
+// readTxOut reads the next sequence of bytes from r as a transaction output
+// (TxOut).
+func readTxOut(r io.Reader, pver uint32, version int32, to *TxOut) error {
+	err := readElement(r, &to.Value)
+	if err != nil {
+		return err
+	}
+
+	to.PkScript, err = readScript(r, pver, 10000,
+		"transaction output public key script")
+	return err
+}
+
+// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// This is part of the Message interface implementation.
+// See Deserialize for decoding transactions stored to disk, such as in a
+// database, as opposed to decoding transactions from the wire.
+func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32) error {
+
+	version, err := binarySerializer.Uint32(r, littleEndian)
+	if err != nil {
+		return err
+	}
+	msg.Version = int32(version)
+
+	count, err := ReadVarInt(r, pver)
+	if err != nil {
+		return err
+	}
+
+	// A count of zero (meaning no TxIn's to the uninitiated) indicates
+	// this is a transaction with witness data.
+	var flag [1]byte
+	if count == 0 {
+		// Next, we need to read the flag, which is a single byte.
+		if _, err = io.ReadFull(r, flag[:]); err != nil {
+			return err
+		}
+
+		// At the moment, the flag MUST be 0x01. In the future other
+		// flag types may be supported.
+		if flag[0] != 0x01 {
+			str := fmt.Sprintf("witness tx but flag byte is %x", flag)
+			panic(str)
+		}
+
+		// With the Segregated Witness specific fields decoded, we can
+		// now read in the actual txin count.
+		count, err = ReadVarInt(r, pver)
+		if err != nil {
+			return err
+		}
+	}
+
+  maxTxInPerMessage := 1000
+
+	// Prevent more input transactions than could possibly fit into a
+	// message.  It would be possible to cause memory exhaustion and panics
+	// without a sane upper bound on this count.
+	if count > uint64(maxTxInPerMessage) {
+		str := fmt.Sprintf("too many input transactions to fit into "+
+			"max message size [count %d, max %d]", count,
+			maxTxInPerMessage)
+		panic(str)
+	}
+
+	// returnScriptBuffers is a closure that returns any script buffers that
+	// were borrowed from the pool when there are any deserialization
+	// errors.  This is only valid to call before the final step which
+	// replaces the scripts with the location in a contiguous buffer and
+	// returns them.
+	returnScriptBuffers := func() {
+		for _, txIn := range msg.TxIn {
+			if txIn == nil {
+				continue
+			}
+
+			if txIn.SignatureScript != nil {
+				scriptPool.Return(txIn.SignatureScript)
+			}
+
+			for _, witnessElem := range txIn.Witness {
+				if witnessElem != nil {
+					scriptPool.Return(witnessElem)
+				}
+			}
+		}
+		for _, txOut := range msg.TxOut {
+			if txOut == nil || txOut.PkScript == nil {
+				continue
+			}
+			scriptPool.Return(txOut.PkScript)
+		}
+	}
+
+	// Deserialize the inputs.
+	var totalScriptSize uint64
+	txIns := make([]TxIn, count)
+	msg.TxIn = make([]*TxIn, count)
+	for i := uint64(0); i < count; i++ {
+		// The pointer is set now in case a script buffer is borrowed
+		// and needs to be returned to the pool on error.
+		ti := &txIns[i]
+		msg.TxIn[i] = ti
+		err = readTxIn(r, pver, msg.Version, ti)
+		if err != nil {
+			returnScriptBuffers()
+			return err
+		}
+		totalScriptSize += uint64(len(ti.SignatureScript))
+	}
+
+	count, err = ReadVarInt(r, pver)
+	if err != nil {
+		returnScriptBuffers()
+		return err
+	}
+
+	// Prevent more output transactions than could possibly fit into a
+	// message.  It would be possible to cause memory exhaustion and panics
+	// without a sane upper bound on this count.
+	if count > uint64(1000) {
+		returnScriptBuffers()
+		str := fmt.Sprintf("too many output transactions to fit into "+
+			"max message size [count %d, max %d]", count,
+			1000)
+		return errors.New(str)
+	}
+
+	// Deserialize the outputs.
+	txOuts := make([]TxOut, count)
+	msg.TxOut = make([]*TxOut, count)
+	for i := uint64(0); i < count; i++ {
+		// The pointer is set now in case a script buffer is borrowed
+		// and needs to be returned to the pool on error.
+		to := &txOuts[i]
+		msg.TxOut[i] = to
+		err = readTxOut(r, pver, msg.Version, to)
+		if err != nil {
+			returnScriptBuffers()
+			return err
+		}
+		totalScriptSize += uint64(len(to.PkScript))
+	}
+
+	// If the transaction's flag byte isn't 0x00 at this point, then one or
+	// more of its inputs has accompanying witness data.
+	if flag[0] != 0 {
+		for _, txin := range msg.TxIn {
+			// For each input, the witness is encoded as a stack
+			// with one or more items. Therefore, we first read a
+			// varint which encodes the number of stack items.
+			witCount, err := ReadVarInt(r, pver)
+			if err != nil {
+				returnScriptBuffers()
+				return err
+			}
+
+			// Prevent a possible memory exhaustion attack by
+			// limiting the witCount value to a sane upper bound.
+			if witCount > 100 {
+				returnScriptBuffers()
+				str := fmt.Sprintf("too many witness items to fit "+
+					"into max message size [count %d, max %d]",
+					witCount, 100)
+				return errors.New(str)
+			}
+
+			// Then for witCount number of stack items, each item
+			// has a varint length prefix, followed by the witness
+			// item itself.
+			txin.Witness = make([][]byte, witCount)
+			for j := uint64(0); j < witCount; j++ {
+				txin.Witness[j], err = readScript(r, pver,
+					1000, "script witness item")
+				if err != nil {
+					returnScriptBuffers()
+					return err
+				}
+				totalScriptSize += uint64(len(txin.Witness[j]))
+			}
+		}
+	}
+
+	msg.LockTime, err = binarySerializer.Uint32(r, littleEndian)
+	if err != nil {
+		returnScriptBuffers()
+		return err
+	}
+
+	// Create a single allocation to house all of the scripts and set each
+	// input signature script and output public key script to the
+	// appropriate subslice of the overall contiguous buffer.  Then, return
+	// each individual script buffer back to the pool so they can be reused
+	// for future deserializations.  This is done because it significantly
+	// reduces the number of allocations the garbage collector needs to
+	// track, which in turn improves performance and drastically reduces the
+	// amount of runtime overhead that would otherwise be needed to keep
+	// track of millions of small allocations.
+	//
+	// NOTE: It is no longer valid to call the returnScriptBuffers closure
+	// after these blocks of code run because it is already done and the
+	// scripts in the transaction inputs and outputs no longer point to the
+	// buffers.
+	var offset uint64
+	scripts := make([]byte, totalScriptSize)
+	for i := 0; i < len(msg.TxIn); i++ {
+		// Copy the signature script into the contiguous buffer at the
+		// appropriate offset.
+		signatureScript := msg.TxIn[i].SignatureScript
+		copy(scripts[offset:], signatureScript)
+
+		// Reset the signature script of the transaction input to the
+		// slice of the contiguous buffer where the script lives.
+		scriptSize := uint64(len(signatureScript))
+		end := offset + scriptSize
+		msg.TxIn[i].SignatureScript = scripts[offset:end:end]
+		offset += scriptSize
+
+		// Return the temporary script buffer to the pool.
+		scriptPool.Return(signatureScript)
+
+		for j := 0; j < len(msg.TxIn[i].Witness); j++ {
+			// Copy each item within the witness stack for this
+			// input into the contiguous buffer at the appropriate
+			// offset.
+			witnessElem := msg.TxIn[i].Witness[j]
+			copy(scripts[offset:], witnessElem)
+
+			// Reset the witness item within the stack to the slice
+			// of the contiguous buffer where the witness lives.
+			witnessElemSize := uint64(len(witnessElem))
+			end := offset + witnessElemSize
+			msg.TxIn[i].Witness[j] = scripts[offset:end:end]
+			offset += witnessElemSize
+
+			// Return the temporary buffer used for the witness stack
+			// item to the pool.
+			scriptPool.Return(witnessElem)
+		}
+	}
+	for i := 0; i < len(msg.TxOut); i++ {
+		// Copy the public key script into the contiguous buffer at the
+		// appropriate offset.
+		pkScript := msg.TxOut[i].PkScript
+		copy(scripts[offset:], pkScript)
+
+		// Reset the public key script of the transaction output to the
+		// slice of the contiguous buffer where the script lives.
+		scriptSize := uint64(len(pkScript))
+		end := offset + scriptSize
+		msg.TxOut[i].PkScript = scripts[offset:end:end]
+		offset += scriptSize
+
+		// Return the temporary script buffer to the pool.
+		scriptPool.Return(pkScript)
+	}
+
+	return nil
+}
+
+// Deserialize decodes a transaction from r into the receiver using a format
+// that is suitable for long-term storage such as a database while respecting
+// the Version field in the transaction.  This function differs from BtcDecode
+// in that BtcDecode decodes from the bitcoin wire protocol as it was sent
+// across the network.  The wire encoding can technically differ depending on
+// the protocol version and doesn't even really need to match the format of a
+// stored transaction at all.  As of the time this comment was written, the
+// encoded transaction is the same in both instances, but there is a distinct
+// difference and separating the two allows the API to be flexible enough to
+// deal with changes.
+func (msg *MsgTx) Deserialize(r io.Reader) error {
+	// At the current time, there is no difference between the wire encoding
+	// at protocol version 0 and the stable long-term storage format.  As
+	// a result, make use of BtcDecode.
+	return msg.BtcDecode(r, 0)
+}
+
+
+func TestComputeInputScript(t *testing.T) {
+
+SERIALIZEDTXANDSIGNDESC := []byte{0,125,1,0,0,0,1,211,171,158,20,224,139,71,93,77,94,74,135,98,70,57,191,79,168,32,75,105,235,123,26,235,34,171,178,162,172,163,27,1,0,0,0,0,255,255,255,255,2,16,39,0,0,0,0,0,0,34,0,32,241,106,220,228,192,219,245,222,136,170,106,154,87,194,100,111,30,116,37,236,5,105,182,73,206,51,218,34,151,46,170,28,224,149,11,84,2,0,0,0,22,0,20,145,192,229,78,173,112,91,95,249,249,254,9,53,182,97,159,113,210,165,116,0,0,0,0,0,210,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,84,11,228,0,0,23,169,20,128,199,54,81,52,79,130,219,224,213,226,92,93,27,6,153,193,105,11,130,135,0,0,0,1,217,43,73,76,147,7,70,63,188,219,20,47,234,97,195,13,216,87,117,11,107,76,81,144,254,102,255,191,72,130,26,154,59,177,48,41,206,123,31,85,158,245,231,71,252,172,67,159,20,85,162,236,124,95,9,183,34,144,121,94,112,102,80,68,49,104,166,12,84,134,136,136,201,54,92,173,174,23,215,5,206,240,150,172,65,238,5,213,166,63,170,11,195,67,37,187,0,0,0,0,0,0,0,0}
+txlen := int(binary.BigEndian.Uint16(SERIALIZEDTXANDSIGNDESC[:2]))
+if txlen != 125 {
+  panic("wrong len")
+}
+
+var tx MsgTx
+err0 := tx.Deserialize(bytes.NewReader(SERIALIZEDTXANDSIGNDESC[2:2+txlen]))
+if err0 != nil {
+  panic("deserialize tx err")
+}
+signdesc := SERIALIZEDTXANDSIGNDESC[2+txlen:]
+
+leng := int(binary.BigEndian.Uint16(signdesc[:2]))
+signdesc = signdesc[2:]
+if leng != len(signdesc) {
+  panic("length wrong")
+}
+
+pubkey := signdesc[:33]
+signdesc = signdesc[33:]
+
+singletweaklen := uint(binary.BigEndian.Uint16(signdesc[:2]))
+signdesc = signdesc[2:]
+
+singletweak := signdesc[:singletweaklen]
+signdesc = signdesc[singletweaklen:]
+
+doubletweaklen := 32
+
+doubletweak := signdesc[:doubletweaklen]
+signdesc = signdesc[doubletweaklen:]
+
+witnessscriptlen := uint(binary.BigEndian.Uint16(signdesc[:2]))
+signdesc = signdesc[2:]
+
+witnessscript := signdesc[:witnessscriptlen]
+signdesc = signdesc[witnessscriptlen:]
+
+outputvalue := int64(binary.BigEndian.Uint64(signdesc[:8]))
+signdesc = signdesc[8:]
+
+outputpkscriptlen := uint(binary.BigEndian.Uint16(signdesc[:2]))
+signdesc = signdesc[2:]
+
+outputpkscript := signdesc[:outputpkscriptlen]
+signdesc = signdesc[outputpkscriptlen:]
+
+hashtype := int32(binary.BigEndian.Uint32(signdesc[:4]))
+signdesc = signdesc[4:]
+
+hashprevouts := signdesc[:32]
+signdesc = signdesc[32:]
+
+hashsequence := signdesc[:32]
+signdesc = signdesc[32:]
+
+hashoutputs := signdesc[:32]
+signdesc = signdesc[32:]
+
+inputindex := int(binary.BigEndian.Uint64(signdesc[:8]))
+signdesc = signdesc[8:]
+
+cpubkey := pubkey[1:]
+var val uint64
+val = uint64(byte(pubkey[0]))
+
+for {
+  if len(cpubkey) == 0 {
+    break
+  }
+  val = val | binary.BigEndian.Uint64(cpubkey[:8])
+  cpubkey = cpubkey[8:]
+}
+var pubkeyobj *btcec.PublicKey
+if val != 0 {
+  pubkeyobj, err0 = btcec.ParsePubKey(pubkey, btcec.S256())
+  if err0 != nil {
+    panic(fmt.Sprintf("err2 %v msg: %v", pubkey, err0))
+  }
+}
+doubletweakpriv, _ := btcec.PrivKeyFromBytes(btcec.S256(), doubletweak)
+
+if len(signdesc) != 0 {
+  panic(fmt.Sprintf("signdesc not empty %v", len(signdesc)))
+}
+
+//WALLETADDR &{0xc4204fa000 0 0xc42049b560 false false true false 4 0xc420526e70 [73 206 156 146 252 111 76 201 12 225 213 151 132 170 175 98 65 145 56 145 74 187 15 198 171 40 111 48 110 153 229 222 107 62 184 21 199 249 239 21 110 254 247 177 103 229 120 45 106 233 127 166 165 115 39 247 64 220 213 243 252 185 146 158 69 11 209 31 227 213 157 126] [227 0 92 166 142 91 9 127 71 60 232 138 62 20 208 83 191 85 135 108 94 243 108 105 17 47 130 70 14 222 55 7] {0 0}}
+PRIVKEY := []byte{227,0,92,166,142,91,9,127,71,60,232,138,62,20,208,83,191,85,135,108,94,243,108,105,17,47,130,70,14,222,55,7}
+pri, _ := btcec.PrivKeyFromBytes(btcec.S256(), PRIVKEY)
+INPUTSCRIPTSCRIPTSIG := []byte{ 22,0,20,157,152,5,36,153,45,228,145,20,188,199,140,125,173,247,140,169,123,131,107}
+INPUTSCRIPTWITNESS0 := [][]byte { []byte {48,68,2,32,62,85,194,71,180,244,2,87,141,53,208,147,25,47,181,82,25,88,118,216,45,70,168,14,65,144,142,71,205,4,105,209,2,32,17,185,10,179,229,150,236,161,45,49,199,206,16,79,105,228,13,185,39,231,184,62,199,137,80,190,249,211,70,248,95,40,1},
+ []byte{2,152,114,200,214,173,54,35,226,31,183,214,244,94,192,247,57,2,88,88,67,25,135,209,219,147,55,211,41,252,217,54,52}}
+inp := InputScript{ScriptSig:INPUTSCRIPTSCRIPTSIG, Witness:INPUTSCRIPTWITNESS0}
+h1, err4 := chainhash.NewHash(hashprevouts)
+h2, err5 := chainhash.NewHash(hashoutputs)
+h3, err6 := chainhash.NewHash(hashsequence)
+
+if err4 != nil {panic("hash err")}
+if err5 != nil {panic("hash err")}
+if err6 != nil {panic("hash err")}
+result, err := ComputeInputScript(&tx, &SignDescriptor {
+	PubKey: pubkeyobj,
+	SingleTweak: singletweak,
+	DoubleTweak: doubletweakpriv,
+	WitnessScript: witnessscript,
+	Output: &TxOut{PkScript: outputpkscript, Value:outputvalue},
+	HashType: SigHashType(hashtype),
+	SigHashes: &TxSigHashes {HashPrevOuts: *h1, HashOutputs: *h2, HashSequence: *h3},
+	InputIndex: inputindex,
+}, pri)
+
+if err != nil {
+  panic(fmt.Sprintf("ComputeInputScriptResult errored %v", err))
+}
+
+if !reflect.DeepEqual(inp, *result) {
+  panic("WRONG ComputeInputScriptResult")
+}
+fmt.Println("all ok!\n")
 }
 
 // ComputeInputScript generates a complete InputIndex for the passed
@@ -1256,11 +1995,11 @@ func main() {
 //
 // This is a part of the WalletController interface.
 func ComputeInputScript(tx *MsgTx,
-	signDesc *SignDescriptor) (*InputScript, error) {
+	signDesc *SignDescriptor,  privKey *btcec.PrivateKey) (*InputScript, error) {
 
 	outputScript := signDesc.Output.PkScript
 
-	isNestedWitness, privKey := privKeyForOutputAddrInScript(outputScript)
+	isNestedWitness := true
 
 	var witnessProgram []byte
 	inputScript := &InputScript{}

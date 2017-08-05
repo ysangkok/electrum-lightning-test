@@ -12,7 +12,6 @@ import (
 	"bufio"
 	"github.com/gorilla/websocket"
 	"net"
-	"fmt"
 )
 
 type LightningProxy struct {
