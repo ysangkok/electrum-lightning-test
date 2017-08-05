@@ -38,10 +38,10 @@ index bcc289b2..dcd4660d 100644
  
  ################################## transactions
 diff --git a/lib/commands.py b/lib/commands.py
-index 442228ee..7b853b52 100644
+index 442228ee..3354fa40 100644
 --- a/lib/commands.py
 +++ b/lib/commands.py
-@@ -669,6 +669,11 @@ class Commands:
+@@ -669,6 +669,16 @@ class Commands:
          # for the python console
          return sorted(known_commands.keys())
  
@@ -50,10 +50,15 @@ index 442228ee..7b853b52 100644
 +        import lightning
 +        return lightning.listen_and_sign(self.wallet)
 +
++    @command('')
++    def testlightning(self):
++        import lightning
++        return lightning.test_lightning(self.wallet)
++
  param_descriptions = {
      'privkey': 'Private key. Type \'?\' to get a prompt.',
      'destination': 'Bitcoin address, contact or alias',
-@@ -818,6 +823,7 @@ def add_global_options(parser):
+@@ -818,6 +828,7 @@ def add_global_options(parser):
      group.add_argument("--testnet", action="store_true", dest="testnet", default=False, help="Use Testnet")
      group.add_argument("--segwit", action="store_true", dest="segwit", default=False, help="The Wizard will create Segwit seed phrases (Testnet only).")
      group.add_argument("--nolnet", action="store_true", dest="nolnet", default=False, help="Use Nolnet")
@@ -63,10 +68,10 @@ index 442228ee..7b853b52 100644
      # create main parser
 diff --git a/lib/lightning.py b/lib/lightning.py
 new file mode 100644
-index 00000000..1af110aa
+index 00000000..20601eb0
 --- /dev/null
 +++ b/lib/lightning.py
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,208 @@
 +from __future__ import print_function
 +from websocket import WebSocketApp
 +import websocket
@@ -75,19 +80,20 @@ index 00000000..1af110aa
 +
 +signer_key = None
 +signer_read_key = False
++
++def toint(x):
++  if len(x) == 2:
++    fmt = ">h"
++  elif len(x) == 4:
++    fmt = ">i"
++  elif len(x) == 8:
++    fmt = ">q"
++  else:
++    assert False
++  return struct.unpack(fmt, x)[0]
++
 +def on_message(ws, message):
 +    global signer_key, signer_read_key
-+
-+    def toint(x):
-+      if len(x) == 2:
-+        fmt = ">h"
-+      elif len(x) == 4:
-+        fmt = ">i"
-+      elif len(x) == 8:
-+        fmt = ">q"
-+      else:
-+        assert False
-+      return struct.unpack(fmt, x)[0]
 +
 +    if not signer_read_key:
 +        signer_key = message
@@ -100,15 +106,22 @@ index 00000000..1af110aa
 +    if message[:len("SignOutputRaw")] == "SignOutputRaw":
 +      rest = message[len("SignOutputRaw"):]
 +      print("SignOutputRaw")
++      assert False
 +    elif message[:len("ComputeInputScript")] == "ComputeInputScript":
 +      rest = message[len("ComputeInputScript"):]
 +      print("ComputeInputScript")
-+      txlen = toint(rest[:2]); rest = rest[2:]
-+      print("txlen", txlen)
-+      tx = rest[:txlen]; rest = rest[txlen:]
++      tx, rest = splitTxAndSigndesc(rest)
++      signdesc = decodeSigndesc(rest)
++      computeInputScript(tx, signdesc)
++      #ws.send it back
++      assert False, "not implemented"
 +    else:
-+      assert False
++      assert False, "unexpected, only SignOutputRaw and ComputeInputScript is in the signer interface"
 +
++
++    print(locals())
++
++def decodeSigndesc(rest):
 +    overalllength = toint(rest[:2]); rest = rest[2:]
 +    if overalllength != len(rest):
 +      print(overalllength, len(rest))
@@ -154,16 +167,111 @@ index 00000000..1af110aa
 +      print(b"rest not empty: " + str(len(rest)))
 +      assert False
 +
-+    del message
 +    if doubletweak == "\x00"*32:
 +      doubletweak = None
 +    if len(singletweak) == 0:
 +      singletweak = None
 +    if len(witnessscript) == 0:
 +      witnessscript = None
++    return SignDescriptor(pubKey=pubkey,
++      singleTweak=singletweak,
++      doubleTweak=doubletweak,
++      witnessScript=witnessscript,
++      output=Output(value=outputvalue, pkScript=outputpkscript),
++      hashType=hashtype,
++      sigHashes=TxSigHashes(hashOutputs=hashoutputs, hashSequence=hashsequence, hashPrevOuts=hashprevouts),
++      inputIndex=inputindex)
 +
-+    print(locals())
++class SignDescriptor(object):
++  def __init__(self, pubKey=None, sigHashes=None, inputIndex=None, singleTweak=None,hashType=None,doubleTweak=None,witnessScript=None,output=None):
++    self.pubKey = pubKey
++    self.sigHashes = sigHashes
++    self.inputIndex = inputIndex
++    self.singleTweak = singleTweak
++    self.hashType = hashType
++    self.doubleTweak = doubleTweak
++    self.witnessScript = witnessScript
++    self.output = output
 +
++class TxSigHashes(object):
++  def __init__(self, hashOutputs=None, hashSequence=None, hashPrevOuts=None):
++    self.hashOutputs = hashOutputs
++    self.hashSequence = hashSequence
++    self.hashPrevOuts = hashPrevOuts
++
++class Output(object):
++  def __init__(self, value=None, pkScript=None):
++    assert value is not None and pkScript is not None
++    self.value = value
++    self.pkScript = pkScript
++
++def splitSigndescAndTx(rest):
++      txlen = toint(rest[:2]); rest = rest[2:]
++      print("txlen", txlen)
++      assert txlen < len(rest)
++      return rest[:txlen], rest[txlen:]
++
++class InputScript(object):
++  def __init__(self, scriptSig, witness):
++    assert witness is None or type(witness[0]) is type(bytes([]))
++    assert type(scriptSig) is type(bytes([]))
++    self.scriptSig = scriptSig
++    self.witness = witness
++
++from bitcoin import EC_KEY, public_key_to_p2pkh
++import bitcoin
++from transaction import decode_script, get_scriptPubKey, segwit_script
++import transaction
++
++def computeInputScript(tx, signdesc, privkey):
++    idx, str_address = transaction.get_address_from_output_script(signdesc.output.pkScript)
++
++    pri = EC_KEY(privkey)
++    isNestedWitness = True
++    # TODO FIXME privkey should be retrieved from wallet using str_address and signer_key
++
++    witnessProgram = None
++    ourScriptSig = None
++
++    if isNestedWitness:
++      pub = pub.get_public_key()
++
++      scr = bitcoin.hash_160(pub.decode('hex'))
++
++      referenceScriptSig = ''.join(map(chr,[22,0,20,157,152,5,36,153,45,228,145,20,188,199,140,125,173,247,140,169,123,131,107]))
++      # \x14 is OP_20
++      ourScriptSig = "\x16\x00\x14" + scr
++      assert ourScriptSig == referenceScriptSig, (decode_script(referenceProgram), scr, decode_script(ourProgram))
++    else:
++      witnessProgram = signdesc.output.pkScript
++
++    # TODO(janus):
++
++    #	// If a tweak (single or double) is specified, then we'll need to use
++    #	// this tweak to derive the final private key to be used for signing
++    #	// this output.
++    #	privKey, err = maybeTweakPrivKey(signDesc, privKey)
++    #	if err != nil {
++    #		return nil, err
++    #	}
++    #
++    #	// Generate a valid witness stack for the input.
++    #	// TODO(roasbeef): adhere to passed HashType
++    #	witnessScript, err := WitnessSignature(tx, signDesc.SigHashes,
++    #		signDesc.InputIndex, signDesc.Output.Value, witnessProgram,
++    #		SigHashAll, privKey, true)
++
++
++def test_lightning(wallet):
++    SERIALIZEDTXANDSIGNDESC = ''.join(map(chr,[0,125,1,0,0,0,1,211,171,158,20,224,139,71,93,77,94,74,135,98,70,57,191,79,168,32,75,105,235,123,26,235,34,171,178,162,172,163,27,1,0,0,0,0,255,255,255,255,2,16,39,0,0,0,0,0,0,34,0,32,241,106,220,228,192,219,245,222,136,170,106,154,87,194,100,111,30,116,37,236,5,105,182,73,206,51,218,34,151,46,170,28,224,149,11,84,2,0,0,0,22,0,20,145,192,229,78,173,112,91,95,249,249,254,9,53,182,97,159,113,210,165,116,0,0,0,0,0,210,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,84,11,228,0,0,23,169,20,128,199,54,81,52,79,130,219,224,213,226,92,93,27,6,153,193,105,11,130,135,0,0,0,1,217,43,73,76,147,7,70,63,188,219,20,47,234,97,195,13,216,87,117,11,107,76,81,144,254,102,255,191,72,130,26,154,59,177,48,41,206,123,31,85,158,245,231,71,252,172,67,159,20,85,162,236,124,95,9,183,34,144,121,94,112,102,80,68,49,104,166,12,84,134,136,136,201,54,92,173,174,23,215,5,206,240,150,172,65,238,5,213,166,63,170,11,195,67,37,187,0,0,0,0,0,0,0,0]))
++    PRIVKEY = ''.join(map(chr,[227,0,92,166,142,91,9,127,71,60,232,138,62,20,208,83,191,85,135,108,94,243,108,105,17,47,130,70,14,222,55,7]))
++    INPUTSCRIPTSCRIPTSIG = ''.join(map(chr,[22,0,20,157,152,5,36,153,45,228,145,20,188,199,140,125,173,247,140,169,123,131,107]))
++    INPUTSCRIPTWITNESS0 = [''.join(map(chr,[48,68,2,32,62,85,194,71,180,244,2,87,141,53,208,147,25,47,181,82,25,88,118,216,45,70,168,14,65,144,142,71,205,4,105,209,2,32,17,185,10,179,229,150,236,161,45,49,199,206,16,79,105,228,13,185,39,231,184,62,199,137,80,190,249,211,70,248,95,40,1])),
++      ''.join(map(chr,[2,152,114,200,214,173,54,35,226,31,183,214,244,94,192,247,57,2,88,88,67,25,135,209,219,147,55,211,41,252,217,54,52]))]
++    tx, signdesc = splitSigndescAndTx(SERIALIZEDTXANDSIGNDESC)
++    signdesc = decodeSigndesc(signdesc)
++    res = computeInputScript(tx, signdesc, PRIVKEY)
++    assert res == InputScript(INPUTSCRIPTSCRIPTSIG, INPUTSCRIPTWITNESS0)
 +
 +def listen_and_sign(wallet):
 +        websocket.enableTrace(True)
