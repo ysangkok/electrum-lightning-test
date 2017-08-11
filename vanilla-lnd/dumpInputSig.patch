@@ -146,3 +146,30 @@ index bf679e8..3b14321 100644
  	return inputScript, nil
  }
  
+diff --git a/lnwallet/wallet.go b/lnwallet/wallet.go
+index fb61d8d..7629eac 100644
+--- a/lnwallet/wallet.go
++++ b/lnwallet/wallet.go
+@@ -566,9 +566,14 @@ func (l *LightningWallet) handleFundingReserveRequest(req *initFundingReserveMsg
+ 		req.resp <- nil
+ 		return
+ 	}
++  fmt.Println("MASTER ELKREM ROOT %v\n", masterElkremRoot.Serialize())
++  fmt.Println("BEST HASH %v\n", bestHash.String())
++  fmt.Println("NODE ID %v\n", req.nodeID.SerializeUncompressed())
+ 	revocationRoot := DeriveRevocationRoot(masterElkremRoot, *bestHash,
+ 		req.nodeID)
+ 
++  fmt.Println("REVOCATION ROOT %v\n", revocationRoot.String())
++
+ 	// Once we have the root, we can then generate our shachain producer
+ 	// and from that generate the per-commitment point.
+ 	producer := shachain.NewRevocationProducer(revocationRoot)
+@@ -578,6 +583,7 @@ func (l *LightningWallet) handleFundingReserveRequest(req *initFundingReserveMsg
+ 		req.resp <- nil
+ 		return
+ 	}
++  fmt.Println("FIRST PREIMAGE %v\n", firstPreimage)
+ 	reservation.ourContribution.FirstCommitmentPoint = ComputeCommitmentPoint(
+ 		firstPreimage[:],
+ 	)

@@ -7,6 +7,7 @@ import "github.com/roasbeef/btcd/txscript"
 import "github.com/roasbeef/btcd/chaincfg/chainhash"
 import "github.com/roasbeef/btcutil"
 import "github.com/roasbeef/btcd/btcec"
+import "github.com/roasbeef/btcutil/hdkeychain"
 import "fmt"
 import "bytes"
 import "encoding/binary"
@@ -1952,6 +1953,33 @@ doubletweakpriv, _ := btcec.PrivKeyFromBytes(btcec.S256(), doubletweak)
 if len(signdesc) != 0 {
   panic(fmt.Sprintf("signdesc not empty %v", len(signdesc)))
 }
+
+ROOTKEY := []byte{186, 32, 191, 48, 253, 181, 179, 78, 247, 53, 108, 25, 32, 151, 145, 80, 38, 26, 14, 220, 215, 110, 65, 128, 22, 143, 165, 6, 226, 56, 124, 248}
+rot, _ := btcec.PrivKeyFromBytes(btcec.S256(), ROOTKEY)
+raw := rot.Serialize()
+fmt.Println(raw)
+master, err := hdkeychain.NewMaster(raw, &chaincfg.SimNetParams)
+if err != nil {
+  panic(err)
+}
+//# https://github.com/lightningnetwork/lnd/blob/0377a4f99de4a533eaffafcda6e47354db566be2/lnwallet/wallet.go#L33
+
+masterRevocationRoot, err2 := master.Child(0x80000000 + 1)
+if err2 != nil {
+  panic(err2)
+}
+masterElkremRoot, err3 := masterRevocationRoot.ECPrivKey()
+if err3 != nil {
+  panic(err3)
+}
+
+fmt.Println(masterElkremRoot.Serialize())
+
+
+
+
+
+
 
 //WALLETADDR &{0xc4204fa000 0 0xc42049b560 false false true false 4 0xc420526e70 [73 206 156 146 252 111 76 201 12 225 213 151 132 170 175 98 65 145 56 145 74 187 15 198 171 40 111 48 110 153 229 222 107 62 184 21 199 249 239 21 110 254 247 177 103 229 120 45 106 233 127 166 165 115 39 247 64 220 213 243 252 185 146 158 69 11 209 31 227 213 157 126] [227 0 92 166 142 91 9 127 71 60 232 138 62 20 208 83 191 85 135 108 94 243 108 105 17 47 130 70 14 222 55 7] {0 0}}
 PRIVKEY := []byte{227,0,92,166,142,91,9,127,71,60,232,138,62,20,208,83,191,85,135,108,94,243,108,105,17,47,130,70,14,222,55,7}

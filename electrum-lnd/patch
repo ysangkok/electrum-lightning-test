@@ -1,5 +1,5 @@
 diff --git a/chainregistry.go b/chainregistry.go
-index a7d818c..91ce9b5 100644
+index 3f982be..04d28b7 100644
 --- a/chainregistry.go
 +++ b/chainregistry.go
 @@ -23,6 +23,7 @@ import (
@@ -10,7 +10,7 @@ index a7d818c..91ce9b5 100644
  )
  
  // defaultBitcoinForwardingPolicy is the default forwarding policy used for
-@@ -261,7 +262,8 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB) (*chainControl
+@@ -269,7 +270,8 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB) (*chainControl
  	}
  
  	cc.msgSigner = wc
@@ -20,7 +20,7 @@ index a7d818c..91ce9b5 100644
  	cc.chainIO = wc
  
  	// Create, and start the lnwallet, which handles the core payment
-@@ -276,6 +278,7 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB) (*chainControl
+@@ -293,6 +295,7 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB) (*chainControl
  		fmt.Printf("unable to start wallet: %v\n", err)
  		return nil, nil, err
  	}
@@ -28,3 +28,42 @@ index a7d818c..91ce9b5 100644
  
  	ltndLog.Info("LightningWallet opened")
  
+diff --git a/lnwallet/btcwallet/signer.go b/lnwallet/btcwallet/signer.go
+index 3b14321..6709e0a 100644
+--- a/lnwallet/btcwallet/signer.go
++++ b/lnwallet/btcwallet/signer.go
+@@ -255,7 +255,7 @@ func serializetx(tx *wire.MsgTx, signDesc *lnwallet.SignDescriptor) ([]byte) {
+ //
+ // This is a part of the WalletController interface.
+ func (b *BtcWallet) ComputeInputScript(tx *wire.MsgTx,
+-	signDesc *lnwallet.SignDescriptor) (*lnwallet.InputScript, error) {
++	signDesc *lnwallet.SignDescriptor, remote *btcec.PublicKey) (*lnwallet.InputScript, error) {
+ 	bajts := serializetx(tx, signDesc)
+ 	fmt.Printf("SERIALIZED TX AND SIGNDESC %v\n", bajts)
+ 
+diff --git a/lnwallet/interface.go b/lnwallet/interface.go
+index 5dbc4d5..a72532b 100644
+--- a/lnwallet/interface.go
++++ b/lnwallet/interface.go
+@@ -306,7 +306,7 @@ type Signer interface {
+ 	// NOTE: This method will ignore any tweak parameters set within the
+ 	// passed SignDescriptor as it assumes a set of typical script
+ 	// templates (p2wkh, np2wkh, etc).
+-	ComputeInputScript(tx *wire.MsgTx, signDesc *SignDescriptor) (*InputScript, error)
++	ComputeInputScript(tx *wire.MsgTx, signDesc *SignDescriptor, remote *btcec.PublicKey) (*InputScript, error)
+ }
+ 
+ // MessageSigner represents an abstract object capable of signing arbitrary
+diff --git a/lnwallet/wallet.go b/lnwallet/wallet.go
+index 7629eac..38fea60 100644
+--- a/lnwallet/wallet.go
++++ b/lnwallet/wallet.go
+@@ -788,7 +788,7 @@ func (l *LightningWallet) handleContributionMsg(req *addContributionMsg) {
+ 		signDesc.InputIndex = i
+ 
+ 		inputScript, err := l.Cfg.Signer.ComputeInputScript(fundingTx,
+-			&signDesc)
++			&signDesc, pendingReservation.partialState.IdentityPub)
+ 		if err != nil {
+ 			req.err <- err
+ 			return
