@@ -68,11 +68,12 @@ index 442228ee..3354fa40 100644
      # create main parser
 diff --git a/lib/lightning.py b/lib/lightning.py
 new file mode 100644
-index 00000000..59ab3687
+index 00000000..6f7716aa
 --- /dev/null
 +++ b/lib/lightning.py
-@@ -0,0 +1,373 @@
+@@ -0,0 +1,405 @@
 +from __future__ import print_function
++import itertools
 +from websocket import WebSocketApp
 +import websocket
 +import keystore
@@ -111,11 +112,11 @@ index 00000000..59ab3687
 +    if not signer_read_key:
 +        signer_key = message
 +        signer_read_key = True
-+        print("read key")
++        print("read key", map(lambda x: ord(x), signer_key))
 +        return
-+    k = keystore.BIP32_KeyStore({})
-+    k.add_xprv_from_seed(bytes(signer_key), 0, 'm/0/0')
-+    print(k)
++    #k = keystore.BIP32_KeyStore({})
++    #k.add_xprv_from_seed(bytes(signer_key), 0, 'm/0/0')
++    #print(string_to_number(k.get_private_key()))
 +    if message[:len("SignOutputRaw")] == "SignOutputRaw":
 +      rest = message[len("SignOutputRaw"):]
 +      print("SignOutputRaw")
@@ -123,9 +124,21 @@ index 00000000..59ab3687
 +    elif message[:len("ComputeInputScript")] == "ComputeInputScript":
 +      rest = message[len("ComputeInputScript"):]
 +      print("ComputeInputScript")
-+      tx, rest = splitTxAndSigndesc(rest)
++      tx, rest, nodeid = splitSigndescAndTx(rest)
 +      signdesc = decodeSigndesc(rest)
-+      computeInputScript(tx, signdesc)
++      def searchKey(addr, master_key):
++          # TODO find key using nodeid/kdf
++          k = keystore.BIP32_KeyStore({})
++          k.add_xprv_from_seed(bytes(master_key), 0, 'm/0/0')
++          derived_pubkey = k.derive_pubkey(False, 0)
++          #print(derived_pubkey)
++          h160 = bitcoin.hash_160(derived_pubkey.decode("hex"))
++          #print(h160.encode("hex"))
++          na = bitcoin.hash_160_to_bc_address(h160, bitcoin.ADDRTYPE_P2WPKH)
++          na = bitcoin.hash_160_to_bc_address(h160, bitcoin.ADDRTYPE_P2PKH)
++          na = bitcoin.hash_160_to_bc_address(h160, bitcoin.ADDRTYPE_P2SH)
++
++      computeInputScript(tx, signdesc, signer_key, searchKey)
 +      #ws.send it back
 +      assert False, "not implemented"
 +    else:
@@ -227,7 +240,8 @@ index 00000000..59ab3687
 +      txlen = toint(rest[:2]); rest = rest[2:]
 +      print("txlen", txlen)
 +      assert txlen < len(rest)
-+      return rest[:txlen], rest[txlen:]
++      nodeid = rest[-33:]; rest = rest[:-33]
++      return rest[:txlen], rest[txlen:], nodeid
 +
 +class InputScript(object):
 +  def __init__(self, scriptSig, witness):
@@ -382,10 +396,12 @@ index 00000000..59ab3687
 +sigHashSingle = "\x03"
 +sigHashAnyOneCanPay = "\x80"
 +
-+def computeInputScript(tx, signdesc, privkey):
-+    idx, str_address = transaction.get_address_from_output_script(signdesc.output.pkScript)
 +
-+    pri = EC_KEY(privkey)
++def computeInputScript(tx, signdesc, masterkey, searchKey):
++    typ, str_address = transaction.get_address_from_output_script(signdesc.output.pkScript)
++
++    pri = searchKey(str_address, masterkey)
++
 +    isNestedWitness = True # TODO should not be hardcoded
 +    # TODO FIXME privkey should be retrieved from wallet using str_address and signer_key
 +
@@ -426,15 +442,31 @@ index 00000000..59ab3687
 +
 +
 +def test_lightning(wallet):
++    #Key derivation test:
++    priv = ''.join(map(chr,[5, 194, 36, 163, 70, 50, 245, 165, 153, 51, 143, 105, 175, 15, 138, 56, 4, 184, 42, 142, 206, 29, 9, 188, 241, 138, 56, 41, 173, 113, 130, 158]))
++    pri, pub = bitcoin.CKD_priv(priv, bitcoin.rev_hex("683e86bd5c6d110d91b94b97137ba6bfe02dbbdb8e3dff722a669b5d69d77af6").decode("hex"), 0x80000000 + 1)
++    def l():
++      hexpri = bitcoin.int_to_hex(EC_KEY(pri).secret)
++      while hexpri[:2] != "":
++        yield ord(hexpri[:2].decode("hex"))
++        hexpri = hexpri[2:]
++    assert list(l()) == [134 ,120 ,57 ,103 ,89 ,81 ,195 ,251 ,249 ,182 ,62 ,146 ,179 ,0 ,247 ,191 ,96 ,181 ,137 ,150 ,181 ,102 ,72 ,70 ,127 ,149 ,108 ,84 ,139 ,235 ,93 ,143], list(l())
++    #TODO
++
++    #ComputeInputScript test:
++
++
++    # this needs to be updated to use new messages with nodeid
 +    SERIALIZEDTXANDSIGNDESC = ''.join(map(chr,[0,125,1,0,0,0,1,211,171,158,20,224,139,71,93,77,94,74,135,98,70,57,191,79,168,32,75,105,235,123,26,235,34,171,178,162,172,163,27,1,0,0,0,0,255,255,255,255,2,16,39,0,0,0,0,0,0,34,0,32,241,106,220,228,192,219,245,222,136,170,106,154,87,194,100,111,30,116,37,236,5,105,182,73,206,51,218,34,151,46,170,28,224,149,11,84,2,0,0,0,22,0,20,145,192,229,78,173,112,91,95,249,249,254,9,53,182,97,159,113,210,165,116,0,0,0,0,0,210,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,84,11,228,0,0,23,169,20,128,199,54,81,52,79,130,219,224,213,226,92,93,27,6,153,193,105,11,130,135,0,0,0,1,217,43,73,76,147,7,70,63,188,219,20,47,234,97,195,13,216,87,117,11,107,76,81,144,254,102,255,191,72,130,26,154,59,177,48,41,206,123,31,85,158,245,231,71,252,172,67,159,20,85,162,236,124,95,9,183,34,144,121,94,112,102,80,68,49,104,166,12,84,134,136,136,201,54,92,173,174,23,215,5,206,240,150,172,65,238,5,213,166,63,170,11,195,67,37,187,0,0,0,0,0,0,0,0]))
-+    PRIVKEY = ''.join(map(chr,[227,0,92,166,142,91,9,127,71,60,232,138,62,20,208,83,191,85,135,108,94,243,108,105,17,47,130,70,14,222,55,7]))
 +    INPUTSCRIPTSCRIPTSIG = ''.join(map(chr,[22,0,20,157,152,5,36,153,45,228,145,20,188,199,140,125,173,247,140,169,123,131,107]))
 +    INPUTSCRIPTWITNESS0 = (''.join(map(chr,[48,68,2,32,62,85,194,71,180,244,2,87,141,53,208,147,25,47,181,82,25,88,118,216,45,70,168,14,65,144,142,71,205,4,105,209,2,32,17,185,10,179,229,150,236,161,45,49,199,206,16,79,105,228,13,185,39,231,184,62,199,137,80,190,249,211,70,248,95,40,1])),
 +      ''.join(map(chr,[2,152,114,200,214,173,54,35,226,31,183,214,244,94,192,247,57,2,88,88,67,25,135,209,219,147,55,211,41,252,217,54,52])))
-+    tx, signdesc = splitSigndescAndTx(SERIALIZEDTXANDSIGNDESC)
++    ke = [227,0,92,166,142,91,9,127,71,60,232,138,62,20,208,83,191,85,135,108,94,243,108,105,17,47,130,70,14,222,55,7]
++    tx, signdesc, nodeid = splitSigndescAndTx(SERIALIZEDTXANDSIGNDESC)
 +    signdesc = decodeSigndesc(signdesc)
 +    #print(signdesc)
-+    res = computeInputScript(tx, signdesc, PRIVKEY)
++    right_key = EC_KEY(''.join(map(lambda x: chr(x), ke)))
++    res = computeInputScript(tx, signdesc, ke, lambda x, _ke: right_key)
 +    assert res.scriptSig == INPUTSCRIPTSCRIPTSIG
 +    assert res.witness == INPUTSCRIPTWITNESS0
 +

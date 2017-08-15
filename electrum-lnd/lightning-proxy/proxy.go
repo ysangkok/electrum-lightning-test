@@ -132,7 +132,7 @@ func serialize(s *lnwallet.SignDescriptor) ([]byte) {
 	return append(lenbuf.Bytes(), bajts...)
 }
 
-func serializetx(tx *wire.MsgTx, signDesc *lnwallet.SignDescriptor) ([]byte) {
+func serializetx(tx *wire.MsgTx, signDesc *lnwallet.SignDescriptor, key *btcec.PublicKey) ([]byte) {
 		var byts []byte
 		var buf bytes.Buffer
 		if tx.Serialize(&buf) != nil {
@@ -154,21 +154,27 @@ func serializetx(tx *wire.MsgTx, signDesc *lnwallet.SignDescriptor) ([]byte) {
 		byts = append(byts, part1...)
 		byts = append(byts, part2...)
 		byts = append(byts, part3...)
+    pubkey := key.SerializeCompressed()
+    byts = append(byts, pubkey...)
 		return byts
 }
 
 func (b *LightningProxy) SignOutputRaw(tx *wire.MsgTx, signDesc *lnwallet.SignDescriptor) ([]byte, error) {
+PRIVKEY := []byte{227,0,92,166,142,91,9,127,71,60,232,138,62,20,208,83,191,85,135,108,94,243,108,105,17,47,130,70,14,222,55,7}
+pri, _ := btcec.PrivKeyFromBytes(btcec.S256(), PRIVKEY)
+//TODO
+
 		byts := []byte("SignOutputRaw")
-		byts = append(byts, serializetx(tx, signDesc)...)
+		byts = append(byts, serializetx(tx, signDesc, pri.PubKey())...)
 		b.rx <- byts
 		msg := <-b.rx
 		return msg, nil
 }
 
 func (b *LightningProxy) ComputeInputScript(tx *wire.MsgTx,
-	signDesc *lnwallet.SignDescriptor) (*lnwallet.InputScript, error) {
+	signDesc *lnwallet.SignDescriptor, key *btcec.PublicKey) (*lnwallet.InputScript, error) {
 		byts := []byte("ComputeInputScript")
-		byts = append(byts, serializetx(tx, signDesc)...)
+		byts = append(byts, serializetx(tx, signDesc, key)...)
 		b.rx <- byts
 		msg := <-b.rx
 		var numWitnessArray = binary.BigEndian.Uint16(msg[:2])

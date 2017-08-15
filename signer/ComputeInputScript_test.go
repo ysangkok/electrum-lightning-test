@@ -18,6 +18,7 @@ import "math/big"
 import "crypto/sha256"
 import "time"
 import "reflect"
+import "golang.org/x/crypto/hkdf"
 
 const (
 	// MaxVarIntPayload is the maximum payload size for a variable length integer.
@@ -1847,6 +1848,33 @@ func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32) error {
 	return nil
 }
 
+// DeriveRevocationRoot derives an root unique to a channel given the
+// derivation root, and the blockhash that the funding process began at and the
+// remote node's identity public key. The seed is derived using the HKDF[1][2]
+// instantiated with sha-256. With this schema, once we know the block hash of
+// the funding transaction, and who we funded the channel with, we can
+// reconstruct all of our revocation state.
+//
+// [1]: https://eprint.iacr.org/2010/264.pdf
+// [2]: https://tools.ietf.org/html/rfc5869
+func DeriveRevocationRoot(derivationRoot *btcec.PrivateKey,
+	blockSalt chainhash.Hash, nodePubKey *btcec.PublicKey) chainhash.Hash {
+
+	secret := derivationRoot.Serialize()
+	salt := blockSalt[:]
+	info := nodePubKey.SerializeCompressed()
+
+	seedReader := hkdf.New(sha256.New, secret, salt, info)
+
+	// It's safe to ignore the error her as we know for sure that we won't
+	// be draining the HKDF past its available entropy horizon.
+	// TODO(roasbeef): revisit...
+	var root chainhash.Hash
+	seedReader.Read(root[:])
+
+	return root
+}
+
 // Deserialize decodes a transaction from r into the receiver using a format
 // that is suitable for long-term storage such as a database while respecting
 // the Version field in the transaction.  This function differs from BtcDecode
@@ -1862,6 +1890,280 @@ func (msg *MsgTx) Deserialize(r io.Reader) error {
 	// at protocol version 0 and the stable long-term storage format.  As
 	// a result, make use of BtcDecode.
 	return msg.BtcDecode(r, 0)
+}
+
+// index is a number which identifies the hash number and serves as a way to
+// determine the hashing operation required  to derive one hash from another.
+// index is initialized with the startIndex and decreases down to zero with
+// successive derivations.
+type index uint64
+
+// element represents the entity which contains the hash and index
+// corresponding to it. An element is the output of the shachain PRF. By
+// comparing two indexes we're able to mutate the hash in such way to derive
+// another element.
+type element struct {
+	index index
+	hash  chainhash.Hash
+}
+
+// RevocationProducer is an implementation of Producer interface using the
+// shachain PRF construct. Starting with a single 32-byte element generated
+// from a CSPRNG, shachain is able to efficiently generate a nearly unbounded
+// number of secrets while maintaining a constant amount of storage. The
+// original description of shachain can be found here:
+// https://github.com/rustyrussell/ccan/blob/master/ccan/crypto/shachain/design.txt
+// with supplementary material here:
+// https://github.com/lightningnetwork/lightning-rfc/blob/master/03-transactions.md#per-commitment-secret-requirements
+type RevocationProducer struct {
+	// root is the element from which we may generate all hashes which
+	// corresponds to the index domain [281474976710655,0].
+	root *element
+}
+
+const (
+	// maxHeight is used to determine the maximum allowable index and the
+	// length of the array required to order to derive all previous hashes
+	// by index. The entries of this array as also knowns as buckets.
+	maxHeight uint8 = 48
+
+	// rootIndex is an index which corresponds to the root hash.
+	rootIndex index = 0
+)
+
+// NewRevocationProducer creates new instance of shachain producer.
+func NewRevocationProducer(root chainhash.Hash) *RevocationProducer {
+	return &RevocationProducer{
+		root: &element{
+			index: rootIndex,
+			hash:  root,
+		}}
+}
+
+// startIndex is the index of first element in the shachain PRF.
+var startIndex index = (1 << maxHeight) - 1
+
+// newIndex is used to create index instance. The inner operations with index
+// implies that index decreasing from some max number to zero, but for
+// simplicity and backward compatibility with previous logic it was transformed
+// to work in opposite way.
+func newIndex(v uint64) index {
+	return startIndex - index(v)
+}
+
+// deriveBitTransformations function checks that the 'to' index is derivable
+// from the 'from' index by checking the indexes are prefixes of another. The
+// bit positions where the zeroes should be changed to ones in order for the
+// indexes to become the same are returned. This set of bits is needed in order
+// to derive one hash from another.
+//
+// NOTE: The index 'to' is derivable from index 'from' iff index 'from' lies
+// left and above index 'to' on graph below, for example:
+// 1. 7(0b111) -> 7
+// 2. 6(0b110) -> 6,7
+// 3. 5(0b101) -> 5
+// 4. 4(0b100) -> 4,5,6,7
+// 5. 3(0b011) -> 3
+// 6. 2(0b010) -> 2, 3
+// 7. 1(0b001) -> 1
+//
+//    ^ bucket number
+//    |
+//  3 |   x
+//    |   |
+//  2 |   |               x
+//    |   |               |
+//  1 |   |       x       |       x
+//    |   |       |       |       |
+//  0 |   |   x   |   x   |   x   |   x
+//    |   |   |   |   |   |   |   |   |
+//    +---|---|---|---|---|---|---|---|---> index
+//        0   1   2   3   4   5   6   7
+//
+func (from index) deriveBitTransformations(to index) ([]uint8, error) {
+	var positions []uint8
+
+	if from == to {
+		return positions, nil
+	}
+
+	//	+ --------------- +
+	// 	| №  | from | to  |
+	//	+ -- + ---- + --- +
+	//	| 48 |	 1  |  1  |
+	//	| 47 |	 0  |  0  | [48-5] - same part of 'from' and 'to'
+	//	| 46 |   0  |  0  |	    indexes which also is called prefix.
+	//		....
+	//	|  5 |	 1  |  1  |
+	//	|  4 |	 0  |  1  | <--- position after which indexes becomes
+	//	|  3 |   0  |  0  |	 different, after this position
+	//	|  2 |   0  |  1  |	 bits in 'from' index all should be
+	//	|  1 |   0  |  0  |	 zeros or such indexes considered to be
+	//	|  0 |   0  |  1  |	 not derivable.
+	//	+ -- + ---- + --- +
+	zeros := countTrailingZeros(from)
+	if uint64(from) != getPrefix(to, zeros) {
+		return nil, errors.New("prefixes are different - indexes " +
+			"aren't derivable")
+	}
+
+	// The remaining part of 'to' index represents the positions which we
+	// will use then in order to derive one element from another.
+	for position := zeros - 1; ; position-- {
+		if getBit(to, position) == 1 {
+			positions = append(positions, position)
+		}
+
+		if position == 0 {
+			break
+		}
+	}
+
+	return positions, nil
+}
+
+// countTrailingZeros count number of of trailing zero bits, this function is
+// used to determine the number of element bucket.
+func countTrailingZeros(index index) uint8 {
+	var zeros uint8
+	for ; zeros < maxHeight; zeros++ {
+
+		if getBit(index, zeros) != 0 {
+			break
+		}
+	}
+
+	return zeros
+}
+
+// getBit return bit on index at position.
+func getBit(index index, position uint8) uint8 {
+	return uint8((uint64(index) >> position) & 1)
+}
+
+func getPrefix(index index, position uint8) uint64 {
+	//	+ -------------------------- +
+	// 	| №  | value | mask | return |
+	//	+ -- + ----- + ---- + ------ +
+	//	| 63 |	 1   |  0   |	 0   |
+	//	| 62 |	 0   |  0   |	 0   |
+	//	| 61 |   1   |  0   |	 0   |
+	//		....
+	//	|  4 |	 1   |  0   |	 0   |
+	//	|  3 |   1   |  0   |	 0   |
+	//	|  2 |   1   |  1   |	 1   | <--- position
+	//	|  1 |   0   |  1   |	 0   |
+	//	|  0 |   1   |  1   |	 1   |
+	//	+ -- + ----- + ---- + ------ +
+
+	var zero uint64
+	mask := (zero - 1) - uint64((1<<position)-1)
+	return (uint64(index) & mask)
+}
+
+// derive computes one shachain element from another by applying a series of
+// bit flips and hasing operations based on the starting and ending index.
+func (e *element) derive(toIndex index) (*element, error) {
+	fromIndex := e.index
+
+	positions, err := fromIndex.deriveBitTransformations(toIndex)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := e.hash.CloneBytes()
+	for _, position := range positions {
+		// Flip the bit and then hash the current state.
+		byteNumber := position / 8
+		bitNumber := position % 8
+
+		buf[byteNumber] ^= (1 << bitNumber)
+
+		h := sha256.Sum256(buf)
+		buf = h[:]
+	}
+
+	hash, err := chainhash.NewHash(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return &element{
+		index: toIndex,
+		hash:  *hash,
+	}, nil
+}
+
+// AtIndex produces a secret by evaluating using the initial seed and a
+// particular index.
+//
+// NOTE: Part of the Producer interface.
+func (p *RevocationProducer) AtIndex(v uint64) (*chainhash.Hash, error) {
+	ind := newIndex(v)
+
+	element, err := p.root.derive(ind)
+	if err != nil {
+		return nil, err
+	}
+
+	return &element.hash, nil
+}
+
+func TestKeyDerivation(t *testing.T) {
+
+ROOTKEY := []byte{5, 194, 36, 163, 70, 50, 245, 165, 153, 51, 143, 105, 175, 15, 138, 56, 4, 184, 42, 142, 206, 29, 9, 188, 241, 138, 56, 41, 173, 113, 130, 158}
+rot, _ := btcec.PrivKeyFromBytes(btcec.S256(), ROOTKEY)
+raw := rot.Serialize()
+//fmt.Println(raw)
+master, err := hdkeychain.NewMaster(raw, &chaincfg.SimNetParams)
+if err != nil {
+  panic(err)
+}
+//# https://github.com/lightningnetwork/lnd/blob/0377a4f99de4a533eaffafcda6e47354db566be2/lnwallet/wallet.go#L33
+
+masterRevocationRoot, err2 := master.Child(0x80000000 + 1)
+if err2 != nil {
+  panic(err2)
+}
+masterElkremRoot, err3 := masterRevocationRoot.ECPrivKey()
+if err3 != nil {
+  panic(err3)
+}
+ser := masterElkremRoot.Serialize()
+if (!reflect.DeepEqual([]byte {134 ,120 ,57 ,103 ,89 ,81 ,195 ,251 ,249 ,182 ,62 ,146 ,179 ,0 ,247 ,191 ,96 ,181 ,137 ,150 ,181 ,102 ,72 ,70 ,127 ,149 ,108 ,84 ,139 ,235 ,93 ,143} , ser)) {
+  fmt.Println(ser)
+  panic(ser)
+}
+
+bestHash, _ := chainhash.NewHashFromStr("709e049390543cf221001ab4f4ed09186672331713193313ebb11e203f0b6a72")
+
+nodeID, errpub := btcec.ParsePubKey([]byte {4 ,67 ,192 ,254 ,221 ,251 ,89 ,162 ,161 ,75 ,221 ,54 ,87 ,137 ,93 ,59 ,2 ,177 ,219 ,28 ,154 ,145 ,53 ,203 ,227 ,248 ,141 ,252 ,76 ,225 ,10 ,154 ,86 ,254 ,20 ,110 ,107 ,92 ,162 ,34 ,98 ,231 ,24 ,238 ,212 ,44 ,238 ,246 ,187 ,14 ,199 ,61 ,39 ,237 ,202 ,252 ,161 ,166 ,58 ,50 ,239 ,53 ,102 ,16 ,65}, btcec.S256())
+if errpub != nil {
+  panic("bad pubkey")
+}
+
+revocationRoot := DeriveRevocationRoot(masterElkremRoot, *bestHash,
+		nodeID)
+
+correctrevoroot, err5 := chainhash.NewHashFromStr("389a1b6184a77d98bb7f91cb89e681083d0c30325cc19fd9709df762b90be7f3")
+
+if err5 != nil || revocationRoot != *correctrevoroot {
+  panic("revocation root wrong")
+}
+
+	// Once we have the root, we can then generate our shachain producer
+	// and from that generate the per-commitment point.
+	producer := NewRevocationProducer(revocationRoot)
+	firstPreimage, err := producer.AtIndex(0)
+
+correct1stpreimage, preimageerr := chainhash.NewHashFromStr("52eb5824eab69e5a1e85ba2b5a98258db140483ee9c6307cf77446b9384fd131")
+if preimageerr != nil {
+  panic(preimageerr)
+}
+
+if firstPreimage.String() != correct1stpreimage.String() {
+  panic(fmt.Sprintf("first preimage wrong %v", firstPreimage))
+}
 }
 
 
@@ -1953,31 +2255,6 @@ doubletweakpriv, _ := btcec.PrivKeyFromBytes(btcec.S256(), doubletweak)
 if len(signdesc) != 0 {
   panic(fmt.Sprintf("signdesc not empty %v", len(signdesc)))
 }
-
-ROOTKEY := []byte{186, 32, 191, 48, 253, 181, 179, 78, 247, 53, 108, 25, 32, 151, 145, 80, 38, 26, 14, 220, 215, 110, 65, 128, 22, 143, 165, 6, 226, 56, 124, 248}
-rot, _ := btcec.PrivKeyFromBytes(btcec.S256(), ROOTKEY)
-raw := rot.Serialize()
-fmt.Println(raw)
-master, err := hdkeychain.NewMaster(raw, &chaincfg.SimNetParams)
-if err != nil {
-  panic(err)
-}
-//# https://github.com/lightningnetwork/lnd/blob/0377a4f99de4a533eaffafcda6e47354db566be2/lnwallet/wallet.go#L33
-
-masterRevocationRoot, err2 := master.Child(0x80000000 + 1)
-if err2 != nil {
-  panic(err2)
-}
-masterElkremRoot, err3 := masterRevocationRoot.ECPrivKey()
-if err3 != nil {
-  panic(err3)
-}
-
-fmt.Println(masterElkremRoot.Serialize())
-
-
-
-
 
 
 
