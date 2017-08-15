@@ -68,7 +68,7 @@ index 442228ee..3354fa40 100644
      # create main parser
 diff --git a/lib/lightning.py b/lib/lightning.py
 new file mode 100644
-index 00000000..6f7716aa
+index 00000000..507f4f14
 --- /dev/null
 +++ b/lib/lightning.py
 @@ -0,0 +1,405 @@
@@ -444,14 +444,14 @@ index 00000000..6f7716aa
 +def test_lightning(wallet):
 +    #Key derivation test:
 +    priv = ''.join(map(chr,[5, 194, 36, 163, 70, 50, 245, 165, 153, 51, 143, 105, 175, 15, 138, 56, 4, 184, 42, 142, 206, 29, 9, 188, 241, 138, 56, 41, 173, 113, 130, 158]))
-+    pri, pub = bitcoin.CKD_priv(priv, bitcoin.rev_hex("683e86bd5c6d110d91b94b97137ba6bfe02dbbdb8e3dff722a669b5d69d77af6").decode("hex"), 0x80000000 + 1)
++    pri, pub = bitcoin.CKD_priv(priv, "683e86bd5c6d110d91b94b97137ba6bfe02dbbdb8e3dff722a669b5d69d77af6".decode("hex"), 0x80000000 + 1)
 +    def l():
 +      hexpri = bitcoin.int_to_hex(EC_KEY(pri).secret)
 +      while hexpri[:2] != "":
 +        yield ord(hexpri[:2].decode("hex"))
 +        hexpri = hexpri[2:]
 +    assert list(l()) == [134 ,120 ,57 ,103 ,89 ,81 ,195 ,251 ,249 ,182 ,62 ,146 ,179 ,0 ,247 ,191 ,96 ,181 ,137 ,150 ,181 ,102 ,72 ,70 ,127 ,149 ,108 ,84 ,139 ,235 ,93 ,143], list(l())
-+    #TODO
++    #TODO. the above is derived in ComputeInputScript_test.go:2133
 +
 +    #ComputeInputScript test:
 +
