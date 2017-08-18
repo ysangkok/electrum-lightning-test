@@ -75,6 +75,7 @@ RUN cd autoconf-2.69 && bash ./configure && make -j2 && make install
 #RUN gcc -o /usr/bin/patch *.c
 
 RUN curl http://ftp.gnu.org/gnu/patch/patch-2.7.5.tar.xz | unxz | ./sltar x
+RUN cd patch-2.7.5 && perl -pi -e 's/^ *wait.*/true/g' configure
 RUN cd patch-2.7.5 && touch configure && bash ./configure LDFLAGS=-static \
               AR=$TOOLSBIN/ar \
               RANLIB=$TOOLSBIN/ranlib \
@@ -95,9 +96,11 @@ RUN perl -pi -e 's#\@datadir\@/aclocal-\$APIVERSION#/automake-1.15.1/m4#g' /usr/
 RUN perl -pi -e 's#\@datadir\@/aclocal#/automake-1.15.1#g' /usr/bin/aclocal
 RUN echo -e "#!/bin/sh\nexit 0" > /usr/bin/makeinfo
 RUN chmod +x /usr/bin/makeinfo
+RUN cd automake-1.15.1 && perl -pi -e 's/^ *wait.*/true/g' configure
 RUN cd automake-1.15.1 && touch configure && ./configure && make && make install
 
 RUN curl -L http://ftpmirror.gnu.org/libtool/libtool-2.4.6.tar.gz | gunzip -cd | tar x
+RUN cd libtool-2.4.6 && perl -pi -e 's/^ *wait.*/true/g' configure
 RUN cd libtool-2.4.6 && touch configure && ./configure LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make && make install
 
 RUN curl -L https://pkg-config.freedesktop.org/releases/pkg-config-0.29.2.tar.gz | gunzip -cd | ./sltar x
