@@ -45,8 +45,25 @@ RUN   curl http://ftp.gnu.org/gnu/m4/m4-1.4.17.tar.xz | unxz | tar x \
 
 RUN curl http://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.xz | unxz | ./sltar x
 
-RUN curl -o /usr/bin/perl http://staticperl.schmorp.de/bigperl.bin \
-&&  chmod +x /usr/bin/perl
+RUN curl -L http://landley.net/toybox/bin/toybox-x86_64 > /usr/bin/comm && chmod +x /usr/bin/comm
+
+RUN curl -L http://www.bzip.org/1.0.6/bzip2-1.0.6.tar.gz | gunzip -cd | tar x
+RUN cd bzip2-1.0.6 && sed -i.bak -re "s#AR=ar#AR=$TOOLSBIN/ar#g" Makefile
+RUN cd bzip2-1.0.6 && sed -i.bak -re "s#LDFLAGS=#LDFLAGS=-static#g" Makefile
+RUN cd bzip2-1.0.6 && make && make install
+
+#RUN curl -L http://www.cpan.org/modules/by-authors/id/M/ML/MLEHMANN/App-Staticperl-1.44.tar.gz | gunzip -cd | ./sltar x
+#RUN cd App-Staticperl-1.44 && ./bin/staticperl install
+
+#RUN echo -e '#!/bin/sh\n$CC -static $@' > /usr/bin/cc && chmod +x /usr/bin/cc
+RUN ln -s $TOOLSBIN/ranlib /usr/bin/ranlib
+RUN curl -L http://search.cpan.org/CPAN/authors/id/A/AR/ARC/perl-5.27.2.tar.gz | gunzip -cd | ./sltar x
+RUN cd perl-5.27.2 && sed -i.bak -re '1886s/exit 1/true/g' ./Configure && echo -en "y\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n-static" | ./Configure -Uusedl -Doptimize=-g -Accflags="-DNO_FANCY_MALLOC -DPLAIN_MALLOC" -Dcc=$CC && make || true
+#RUN cd perl-5.27.2 && for i in ./perl $(find . -type f -name '*.so'); do patchelf --set-interpreter $TOOLSBIN/../lib/libc.so; done
+RUN cd perl-5.27.2 && make && make install
+RUN rm /usr/bin/ranlib
+RUN /usr/local/bin/perl -e "exit 0"
+ENV PATH /usr/local/bin:$PATH
 
 RUN  curl http://ftp.gnu.org/gnu/bash/bash-4.4.tar.gz | gunzip | tar x \
   &&  ( \
@@ -83,27 +100,10 @@ RUN cd patch-2.7.5 && touch configure && bash ./configure LDFLAGS=-static \
 
 RUN curl -o bitcoin.zip -L https://github.com/bitcoin/bitcoin/archive/16240f43a550c9b0c34d541df5fa80c2fb43d17c.zip
 
-RUN curl -L http://landley.net/toybox/bin/toybox-x86_64 > /usr/bin/comm && chmod +x /usr/bin/comm
-
-RUN curl -L http://www.bzip.org/1.0.6/bzip2-1.0.6.tar.gz | gunzip -cd | tar x
-RUN cd bzip2-1.0.6 && sed -i.bak -re "s#AR=ar#AR=$TOOLSBIN/ar#g" Makefile
-RUN cd bzip2-1.0.6 && sed -i.bak -re "s#LDFLAGS=#LDFLAGS=-static#g" Makefile
-RUN cd bzip2-1.0.6 && make && make install
-
-#RUN curl -L http://www.cpan.org/modules/by-authors/id/M/ML/MLEHMANN/App-Staticperl-1.44.tar.gz | gunzip -cd | ./sltar x
-#RUN cd App-Staticperl-1.44 && ./bin/staticperl install
-
-##RUN echo -e '#!/bin/sh\n$CC -static $@' > /usr/bin/cc && chmod +x /usr/bin/cc
-#RUN ln -s $TOOLSBIN/ranlib /usr/bin/ranlib
-#RUN curl -L http://search.cpan.org/CPAN/authors/id/A/AR/ARC/perl-5.27.2.tar.gz | gunzip -cd | ./sltar x
-#RUN cd perl-5.27.2 && sed -i.bak -re '1886s/exit 1/true/g' ./Configure && echo -en "y\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n-static" | ./Configure -Doptimize=-g -Accflags="-DNO_FANCY_MALLOC -DPLAIN_MALLOC" -Dcc=$CC && make || true
-#RUN cd perl-5.27.2 && patchelf --set-interpreter $TOOLSBIN/../lib/libc.so ./perl $(find . -type f -name '*.so')
-##RUN cd perl-5.27.2 && make && make install
-#RUN rm /usr/bin/ranlib
 
 RUN curl http://ftp.gnu.org/gnu/automake/automake-1.15.1.tar.xz | unxz | ./sltar x
 #RUN cd automake-1.15.1 && perl -pi -e 's/^ *wait.*/true/g' configure
-#RUN cd automake-1.15.1 && bash configure && make || (cat config.log; false)
+#RUN cd automake-1.15.1 && bash configure LDFLAGS=-static && make
 #RUN cd automake-1.15.1 && make install
 
 RUN bash -c "cp automake-1.15.1/bin/automake{.in,}"
