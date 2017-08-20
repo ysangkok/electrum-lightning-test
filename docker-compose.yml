@@ -19,7 +19,7 @@ services:
       - btcd1
   btcw:
     build: btcwallet
-    entrypoint: /go/bin/btcwallet --noclienttls --noservertls
+    entrypoint: /go/bin/btcwallet -A /root/.btcwallet --createtemp && /go/bin/btcwallet --noclienttls --noservertls
     volumes:
       - ./config-btcwallet:/root/.btcwallet
 #    depends_on:
