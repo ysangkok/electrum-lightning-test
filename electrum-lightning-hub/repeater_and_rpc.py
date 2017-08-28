@@ -1,180 +1,141 @@
-#!/usr/bin/env python
-
-# this should repeat signing requests from lnd and launch lncli for rpc
-
-import itertools
-import traceback
-import sys
 import asyncio
-import websockets
-import logging
-import os
-from enum import Enum
+import io
+import ssl
+import collections
+from typing import List, Tuple
 
-logging.basicConfig(level=logging.INFO)
+from h2.config import H2Configuration
+from h2.connection import H2Connection
+from h2.events import (
+    ConnectionTerminated, DataReceived, RequestReceived, StreamEnded
+)
+from h2.errors import ErrorCodes
+from h2.exceptions import ProtocolError
+from lib.ln import rpc_pb2_grpc, rpc_pb2
+from google.protobuf import json_format
 
-q = asyncio.PriorityQueue()
-to_lnd = asyncio.Queue()
+RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
-#class State(Enum):
-#	need_key = 0
-#	need_req = 1
-#	need_ack_did_not_send = 2
-#	need_ack_did_send = 2
-#
-#state = State.need_key
 
-#async def handle_conn(conn, path):
-#	global state
-#	if state == State.need_key:
-#		conn.send(b"key not received")
-#		return
-#	conn.send(key)
-#	while True:
-#		print(state)
-#		if state == State.need_req:
-#			await asyncio.sleep(1)
-#			if q.qsize() > 0:
-#				state = State.need_ack_did_not_send
-#		elif state == State.need_ack_did_not_send:
-#			prio, msg = await q.get()
-#			await q.put((prio, msg))
-#			conn.send(msg)
-#			state = State.need_ack_did_send
-#		elif state == State.need_ack_did_send:
-#			repl = await conn.recv()
-#			await to_lnd.put(repl)
-#			state = State.need_req
+class H2Protocol(asyncio.Protocol):
+    def __init__(self, elec):
+        config = H2Configuration(client_side=False, header_encoding='utf-8')
+        self.conn = H2Connection(config=config)
+        self.transport = None
+        self.stream_data = {}
+        self.elec = elec
 
-async def handle_conn(conn, path):
-		global q
-		global to_lnd
-		global key
-		sent_idx = -1
-		try:
-				assert key is not None
-				await conn.send(key)
-				ack_needed = False
-				while True:
-						ack_needed = q.qsize() > 0
-						if ack_needed:
-								prio, msg = await q.get()
-								if sent_idx < prio:
-									await conn.send(msg)
-									sent_idx = prio
-								await q.put((prio, msg))
-						recv_task = asyncio.ensure_future(conn.recv())
-						def mark_recv_done(x):
-								nonlocal recv_done
-								recv_done = True
-						tasks = [recv_task]
-						recv_task.add_done_callback(mark_recv_done)
-						queue_done = recv_done = False
-						if not ack_needed:
-								queue_task = asyncio.ensure_future(q.get())
-								def mark_queue_done(x):
-										global loop
-										nonlocal queue_done
-										nonlocal sent_idx
-										queue_done = True
-										if not x.cancelled():
-											async def fun():
-												await q.put(x.result())
-											loop.call_soon(lambda: asyncio.ensure_future(fun()))
-								queue_task.add_done_callback(mark_queue_done)
-								tasks.append(queue_task)
-						try:
-								done, pending = await asyncio.wait_for(asyncio.shield(asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)), 1.0)
-						except asyncio.TimeoutError:
-								for job in tasks:
-									job.cancel()
-								if ack_needed:
-									if q.qsize() == 0:
-										await q.put((prio, msg))
-								continue
-						for task in tasks:
-							try:
-								ex = task.exception()
-								if ex: print(ex)
-							except asyncio.futures.InvalidStateError:
-								pass
-						if not ack_needed and not queue_task.cancelled():
-							try:
-								r = queue_task.result()
-							except asyncio.futures.InvalidStateError:
-								break
-							if sent_idx < r[0]:
-								await conn.send(r[1])
-								sent_idx = r[0]
+    def connection_made(self, transport: asyncio.Transport):
+        self.transport = transport
+        self.conn.initiate_connection()
+        self.transport.write(self.conn.data_to_send())
 
-						doneone = next(iter(done))
-						if queue_done and recv_done:
-								res = await asyncio.gather(*tasks, return_exceptions=True)
-								gotex = any(isinstance(x, websockets.protocol.ConnectionClosed) for x in res)
-								if ack_needed:
-									if gotex:
-										await q.put((prio, msg))
-										break
-						for p in pending: p.cancel()
-						if recv_done:
-								if recv_task.exception():
-										print("BREAKING")
-										break
-								if recv_task.result().strip() == b"":
-										print("ignoring newline")
-								else:
-										assert q.qsize() > 0
-										print("dumped", await q.get())
-										await to_lnd.put(recv_task.result())
-		except Exception:
-				traceback.print_exc()
-				globtask.cancel()
+    def data_received(self, data: bytes):
+        try:
+            events = self.conn.receive_data(data)
+        except ProtocolError as e:
+            self.transport.write(self.conn.data_to_send())
+            self.transport.close()
+        else:
+            self.transport.write(self.conn.data_to_send())
+            for event in events:
+                if isinstance(event, RequestReceived):
+                    self.request_received(event.headers, event.stream_id)
+                elif isinstance(event, DataReceived):
+                    self.receive_data(event.data, event.stream_id)
+                elif isinstance(event, StreamEnded):
+                    print("Stream ended")
+                    self.stream_complete(event.stream_id)
+                elif isinstance(event, ConnectionTerminated):
+                    self.transport.close()
 
-key = None
+                self.transport.write(self.conn.data_to_send())
 
-async def client(hostport):
-		global globtask, key, state
-		while True:
-			try:
-					async with websockets.connect('ws://' + hostport) as lnd:
-						key = await lnd.recv()
-						#if state == State.need_key: state = State.need_req
-						for idx in itertools.count():
-								async def f1():
-										req = await lnd.recv()
-										print("< {}".format(req))
-										await q.put((idx, req))
-								async def f2():
-										rply = await to_lnd.get()
-										print("> {}".format(rply))
-										await lnd.send(rply)
-								l = [asyncio.ensure_future(x()) for x in [f1, f2]]
-								try:
-									done, pending = await asyncio.wait_for(asyncio.shield(asyncio.wait(l, return_when=asyncio.FIRST_COMPLETED)), 1.0)
-								except asyncio.TimeoutError:
-									for job in l: job.cancel()
-									continue
-								for p in pending: p.cancel()
-								doneone = next(iter(done))
-								if doneone.exception():
-										raise doneone.exception()
-						await asyncio.sleep(1)
-			except Exception as e:
-				print(e)
-				await asyncio.sleep(5)
-				#globtask.cancel()
+    def request_received(self, headers: List[Tuple[str, str]], stream_id: int):
+        headers = collections.OrderedDict(headers)
+        method = headers[':method']
 
-#async def status():
-#		while True:
-#				print("q: {} to_lnd: {}".format(q.qsize(), to_lnd.qsize()))
-#				await asyncio.sleep(5)
+        # We only support GET and POST.
+        if method not in ('GET', 'POST'):
+            self.return_405(headers, stream_id)
+            return
 
-server = websockets.serve(handle_conn, '0.0.0.0', 8765)
+        # Store off the request data.
+        request_data = RequestData(headers, io.BytesIO())
+        self.stream_data[stream_id] = request_data
+
+    def return_405(self, headers: List[Tuple[str, str]], stream_id: int):
+        """
+        We don't support the given method, so we want to return a 405 response.
+        """
+        response_headers = (
+            (':status', '405'),
+            ('content-length', '0'),
+            ('server', 'asyncio-h2'),
+        )
+        self.conn.send_headers(stream_id, response_headers, end_stream=True)
+
+    def receive_data(self, data: bytes, stream_id: int):
+        """
+        We've received some data on a stream. If that stream is one we're
+        expecting data on, save it off. Otherwise, reset the stream.
+        """
+        try:
+            stream_data = self.stream_data[stream_id]
+        except KeyError:
+            self.conn.reset_stream(
+                stream_id, error_code=ErrorCodes.PROTOCOL_ERROR
+            )
+        else:
+            self.received_data = data
+            stream_data.data.write(data)
+    def stream_complete(self, stream_id: int):
+      try:
+          request_data = self.stream_data[stream_id]
+      except KeyError:
+          # Just return, we probably 405'd this already
+          return
+
+      headers = request_data.headers
+      body = request_data.data.getvalue()
+      print(dict(headers)[":path"])
+      print(body)
+      print(self.received_data)
+
+      # ['FetchRootKey', 'ConfirmedBalance', 'ListUnspentWitness', 'NewAddress']
+      methods = [x for x in rpc_pb2_grpc.ElectrumBridgeServicer.__dict__.keys() if not x.startswith("__")]
+
+      for methodname in methods:
+        if methodname in dict(headers)[":path"]:
+          a = rpc_pb2.__dict__[methodname + "Request"]()
+          a.ParseFromString(body)
+          jso = json_format.MessageToJson(a)
+          res = getattr(elec, methodname)(jso)
+          def done(fut):
+            print("result", fut.exception(), fut.result())
+            b = rpc_pb2.__dict__[methodname + "Response"]()
+            json_format.Parse(fut.result(), b)
+            bajts = b.SerializeToString()
+            bajts = b"\x00" + len(bajts).to_bytes(byteorder="big", length=4) + bajts
+            response_headers = (
+                (':status', '200'),
+                ('content-type', 'application/grpc+proto'),
+                ('content-length', str(len(bajts))),
+                ('server', 'asyncio-h2'),
+            )
+            self.conn.send_headers(stream_id, response_headers)
+            self.conn.send_data(stream_id, bajts)
+            self.conn.send_headers(stream_id, (("grpc-status", "0",),), end_stream=True)
+            self.transport.write(self.conn.data_to_send())
+          asyncio.ensure_future(res).add_done_callback(done)
+          break
+
+import asyncio
+from jsonrpc_async import Server
+elec = Server("http://localhost:8432")
 
 loop = asyncio.get_event_loop()
-loop.set_debug(False)
-l = [server, client(os.environ["ELECTRUM_LND_HOST_PORT"])]
-globtask = asyncio.ensure_future(asyncio.wait(l))
-loop.run_until_complete(globtask)
+# Each client connection will create a new protocol instance
+coro = loop.create_server(lambda: H2Protocol(elec), '127.0.0.1', 9090)
+server = loop.run_until_complete(coro)
 loop.run_forever()
-loop.close()
