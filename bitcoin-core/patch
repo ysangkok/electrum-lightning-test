@@ -14,7 +14,7 @@ index dc4d262..815d03a 100644
 -        consensus.BIP66Height = 1251; // BIP66 activated on regtest (Used in rpc activation tests)
 +        strNetworkID = "sim";
 +        consensus.nSubsidyHalvingInterval = 210000;
-+        consensus.BIP34Height = 0; // BIP34 has not activated on regtest (far in the future so block v1 are not rejected in tests)
++        consensus.BIP34Height = 100000000; // BIP34 has not activated on regtest (far in the future so block v1 are not rejected in tests)
 +        consensus.BIP34Hash = uint256S("0x683e86bd5c6d110d91b94b97137ba6bfe02dbbdb8e3dff722a669b5d69d77af6");
 +        consensus.BIP65Height = 0; // BIP65 activated on regtest (Used in rpc activation tests)
 +        consensus.BIP66Height = 0; // BIP66 activated on regtest (Used in rpc activation tests)
@@ -81,45 +81,3 @@ index dc4d262..815d03a 100644
      }
  };
  
-diff --git a/src/validation.cpp b/src/validation.cpp
-index ddc8b1b..5519d1b 100644
---- a/src/validation.cpp
-+++ b/src/validation.cpp
-@@ -2020,12 +2020,19 @@ void static UpdateTip(CBlockIndex *pindexNew, const CChainParams& chainParams) {
-         for (int i = 0; i < 100 && pindex != NULL; i++)
-         {
-             int32_t nExpectedVersion = ComputeBlockVersion(pindex->pprev, chainParams.GetConsensus());
--            if (pindex->nVersion > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->nVersion & ~nExpectedVersion) != 0)
-+            if (pindex->nVersion > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->nVersion & ~nExpectedVersion) != 0) {
-+                std::cerr << "unexpected version " << pindex->nVersion << " " << VERSIONBITS_LAST_OLD_BLOCK_VERSION << " " << nExpectedVersion << std::endl;
-+                abort();
-                 ++nUpgraded;
-+            }
-             pindex = pindex->pprev;
-         }
--        if (nUpgraded > 0)
--            warningMessages.push_back(strprintf(_("%d of last 100 blocks have unexpected version"), nUpgraded));
-+        if (nUpgraded > 0) {
-+            auto msg = strprintf(_("%d of last 100 blocks have unexpected version"), nUpgraded);
-+            warningMessages.push_back(msg);
-+            std::cerr << msg << std::endl;
-+            abort();
-+        }
-         if (nUpgraded > 100/2)
-         {
-             std::string strWarning = _("Warning: Unknown block versions being mined! It's possible unknown rules are in effect");
-@@ -2919,8 +2926,12 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationSta
-     assert(pindexPrev != NULL);
-     const int nHeight = pindexPrev->nHeight + 1;
-     // Check proof of work
--    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
--        return state.DoS(100, false, REJECT_INVALID, "bad-diffbits", false, "incorrect proof of work");
-+    auto nextWork = GetNextWorkRequired(pindexPrev, &block, consensusParams);
-+    if (block.nBits != nextWork) {
-+        std::cerr << "bad-diffbits " << block.nBits << " != " << nextWork << std::endl;
-+        abort();
-+        //return state.DoS(100, false, REJECT_INVALID, "bad-diffbits", false, "incorrect proof of work");
-+    }
- 
-     // Check timestamp against prev
-     if (block.GetBlockTime() <= pindexPrev->GetMedianTimePast())
