@@ -13,6 +13,8 @@ from h2.errors import ErrorCodes
 from h2.exceptions import ProtocolError
 from lib.ln import rpc_pb2_grpc, rpc_pb2
 from google.protobuf import json_format
+import json
+import traceback
 
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
@@ -44,7 +46,6 @@ class H2Protocol(asyncio.Protocol):
                 elif isinstance(event, DataReceived):
                     self.receive_data(event.data, event.stream_id)
                 elif isinstance(event, StreamEnded):
-                    print("Stream ended")
                     self.stream_complete(event.stream_id)
                 elif isinstance(event, ConnectionTerminated):
                     self.transport.close()
@@ -98,9 +99,6 @@ class H2Protocol(asyncio.Protocol):
 
       headers = request_data.headers
       body = request_data.data.getvalue()
-      print(dict(headers)[":path"])
-      print(body)
-      print(self.received_data)
 
       # ['FetchRootKey', 'ConfirmedBalance', 'ListUnspentWitness', 'NewAddress']
       methods = [x for x in rpc_pb2_grpc.ElectrumBridgeServicer.__dict__.keys() if not x.startswith("__")]
@@ -108,11 +106,33 @@ class H2Protocol(asyncio.Protocol):
       for methodname in methods:
         if methodname in dict(headers)[":path"]:
           a = rpc_pb2.__dict__[methodname + "Request"]()
-          a.ParseFromString(body)
+          # https://grpc.io/docs/guides/wire.html
+          if body[0] != 0:
+            print("compressed grpc message?")
+            print("  ", body)
+            print("  ", methodname + "Request")
+
+          dec = int.from_bytes(body[1:5], byteorder="big")
+          if dec + 5 != len(body):
+            print("length mismatch?")
+            print("  ", body[1:5], dec, len(body))
+          a.ParseFromString(body[5:])
           jso = json_format.MessageToJson(a)
-          res = getattr(elec, methodname)(jso)
+          if len(json.loads(jso).keys()) == 0 and methodname == "FetchInputInfo":
+            raise Exception("no keys" + repr(a) + " " + repr(body))
+          res = getattr(self.elec, methodname)(jso)
           def done(fut):
-            print("result", fut.exception(), fut.result())
+            try:
+              print("result", fut.exception(), fut.result())
+            except Exception as e:
+              traceback.print_exc()
+              response_headers = (
+                  (':status', '500'),
+                  ('server', 'asyncio-h2'),
+              )
+              self.conn.send_headers(stream_id, response_headers, end_stream=True)
+              self.transport.write(self.conn.data_to_send())
+              return
             b = rpc_pb2.__dict__[methodname + "Response"]()
             json_format.Parse(fut.result(), b)
             bajts = b.SerializeToString()
@@ -128,14 +148,30 @@ class H2Protocol(asyncio.Protocol):
             self.conn.send_headers(stream_id, (("grpc-status", "0",),), end_stream=True)
             self.transport.write(self.conn.data_to_send())
           asyncio.ensure_future(res).add_done_callback(done)
-          break
+          return
+      raise Exception("method " + dict(headers)[":path"] + " not found!")
 
 import asyncio
 from jsonrpc_async import Server
-elec = Server("http://localhost:8432")
+
+first = True
+
+serv1 = Server("http://localhost:8432")
+serv2 = Server("http://localhost:8433")
+
+def handler():
+  global first
+  if first:
+    print("used first")
+    elec = serv1
+    first = False
+  else:
+    print("using SECOND")
+    elec = serv2
+  return H2Protocol(elec)
 
 loop = asyncio.get_event_loop()
 # Each client connection will create a new protocol instance
-coro = loop.create_server(lambda: H2Protocol(elec), '127.0.0.1', 9090)
+coro = loop.create_server(handler, '127.0.0.1', 9090)
 server = loop.run_until_complete(coro)
 loop.run_forever()
