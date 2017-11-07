@@ -134,7 +134,10 @@ class H2Protocol(asyncio.Protocol):
               self.transport.write(self.conn.data_to_send())
               return
             b = rpc_pb2.__dict__[methodname + "Response"]()
-            json_format.Parse(fut.result(), b)
+            try:
+              json_format.Parse(fut.result(), b)
+            except:
+              json_format.Parse("{}", b)
             bajts = b.SerializeToString()
             bajts = b"\x00" + len(bajts).to_bytes(byteorder="big", length=4) + bajts
             response_headers = (
@@ -157,7 +160,7 @@ from jsonrpc_async import Server
 first = True
 
 serv1 = Server("http://localhost:8432")
-serv2 = Server("http://localhost:8433")
+serv2 = Server("http://localhost:8434")
 
 def handler():
   global first
