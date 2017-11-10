@@ -125,6 +125,7 @@ class H2Protocol(asyncio.Protocol):
             try:
               print("result", fut.exception(), fut.result())
             except Exception as e:
+              print("While handling " + methodname)
               traceback.print_exc()
               response_headers = (
                   (':status', '500'),
@@ -159,8 +160,8 @@ from jsonrpc_async import Server
 
 first = True
 
-serv1 = Server("http://localhost:8432")
-serv2 = Server("http://localhost:8434")
+serv1 = Server("http://localhost:8433")
+serv2 = Server("http://localhost:8435")
 
 def handler():
   global first
@@ -173,8 +174,119 @@ def handler():
     elec = serv2
   return H2Protocol(elec)
 
+from aiohttp import web
+import aiohttp
+import aiohttp.client_exceptions
+import aiohttp.client_reqrep
+import traceback
+import async_timeout
+
+from distutils.version import StrictVersion
+assert StrictVersion(aiohttp.__version__) >= StrictVersion("2.3.2")
+
 loop = asyncio.get_event_loop()
-# Each client connection will create a new protocol instance
-coro = loop.create_server(handler, '127.0.0.1', 9090)
-server = loop.run_until_complete(coro)
+
+def streamWriterToStreamResponse(streamWriter, request, lock):
+    class MyResponse(web.Response):
+        @property
+        def transport(self):
+            return streamWriter.transport
+        def __init__(self):
+            super(MyResponse, self).__init__()
+            self.prepare(request)
+            self._payload_writer = streamWriter
+        def set_tcp_nodelay(self, val):
+            pass
+        def release(self):
+            lock.release()
+    resp = MyResponse()
+    resp.available = True
+    return resp
+
+class MyProtocol(aiohttp.client_proto.ResponseHandler):
+    def __init__(self, client_reader, client_writer, request, lock):
+        super(MyProtocol, self).__init__()
+        self.request = request
+        self.writer = streamWriterToStreamResponse(client_writer, request, lock)
+        self._loop = loop
+
+import json
+
+class ServerConnector(aiohttp.BaseConnector):
+    def __init__(self, port, request, replylock):
+        self.replylock = replylock
+        aiohttp.BaseConnector.__init__(self)
+        self.port = port
+        self.request = request
+        self.client_connected = asyncio.Lock()
+        self.reply = None
+    async def _create_connection(self, req):
+        async def client_connected_tb(client_reader, client_writer):
+            print("client connected")
+            lock = asyncio.Lock()
+            await lock.acquire()
+            self._protocol = MyProtocol(client_reader, client_writer, self.request, lock)
+            self.client_connected.release()
+            try:
+                with async_timeout.timeout(3): # electrum must answer within 3 seconds
+                    await lock.acquire()
+                    parsed = None
+                    while True:
+                        line = await client_reader.readline()
+                        try:
+                            parsed = json.loads(line.strip())
+                            break
+                        except:
+                            await asyncio.sleep(0.1)
+                    self.reply = json.dumps(parsed).encode("utf-8")
+            except asyncio.TimeoutError:
+                self.reply = None
+            self._protocol.data_received(b"HTTP/1.0 200 OK\r\n\r\n")
+            self.replylock.release()
+            #self._protocol.feed_data(repl)
+            #self._protocol.feed_eof()
+        server = await asyncio.start_server(client_connected_tb, port=self.port)
+        self.server = server
+        await self.client_connected.acquire()
+        return self._protocol
+
+def mkhandler(port):
+  async def all_handler(request):
+      print("all handler {}".format(port))
+      content = await request.content.read()
+      while True:
+          replylock = asyncio.Lock()
+          await replylock.acquire()
+          connector = ServerConnector(port, request, replylock)
+          await connector.client_connected.acquire()
+          try:
+              with async_timeout.timeout(30):
+                  async with aiohttp.ClientSession(connector=connector) as session:
+                      async with session.post("http://localhost:" + str(port) + str(request.rel_url), data=content) as response:
+                          #body = await response.text()
+                          #print("response received", body)
+                          await replylock.acquire()
+                          print("replylock acquired")
+                          if connector.reply: return web.Response(body=connector.reply, content_type="application/json")
+                          else: return web.Response(status=500)
+          except asyncio.TimeoutError:
+              print("timeout, retrying")
+              connector.server.close()
+              await connector.server.wait_closed()
+              if connector.reply:
+                  return web.Response(body=connector.reply, content_type="application/json")
+          finally:
+              if connector.server:
+                  connector.server.close()
+                  await connector.server.wait_closed()
+  app = web.Application()
+  app.router.add_route("*", "", all_handler)
+  return app.make_handler()
+
+async def create_servers():
+  coro = loop.create_server(handler, '127.0.0.1', 9090)
+  elec1 = loop.create_server(mkhandler(8432), '127.0.0.1', 8433)
+  elec2 = loop.create_server(mkhandler(8434), '127.0.0.1', 8435)
+  return asyncio.gather(coro, elec1, elec2)
+server = loop.run_until_complete(create_servers())
 loop.run_forever()
