@@ -1,6 +1,5 @@
 import asyncio
 import io
-import ssl
 import collections
 from typing import List, Tuple
 
@@ -11,13 +10,30 @@ from h2.events import (
 )
 from h2.errors import ErrorCodes
 from h2.exceptions import ProtocolError
+
 from lib.ln import rpc_pb2_grpc, rpc_pb2
 from google.protobuf import json_format
+
 import json
+
+from jsonrpc_async import Server
+from aiohttp import web
+import aiohttp
+import aiohttp.client_exceptions
+import aiohttp.client_reqrep
 import traceback
+import async_timeout
+import json
+import subprocess
+import shlex
+import tempfile
+import os
+import sys
+
+from distutils.version import StrictVersion
+assert StrictVersion(aiohttp.__version__) >= StrictVersion("2.3.2")
 
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
-
 
 class H2Protocol(asyncio.Protocol):
     def __init__(self, elec):
@@ -158,9 +174,6 @@ class H2Protocol(asyncio.Protocol):
           return
       raise Exception("method " + path + " not found!")
 
-import asyncio
-from jsonrpc_async import Server
-
 servers = {}
 
 def make_h2handler(port):
@@ -172,15 +185,6 @@ def make_h2handler(port):
     return servers[port]
   return handler
 
-from aiohttp import web
-import aiohttp
-import aiohttp.client_exceptions
-import aiohttp.client_reqrep
-import traceback
-import async_timeout
-
-from distutils.version import StrictVersion
-assert StrictVersion(aiohttp.__version__) >= StrictVersion("2.3.2")
 
 loop = asyncio.get_event_loop()
 
@@ -207,8 +211,6 @@ class MyProtocol(aiohttp.client_proto.ResponseHandler):
         self.request = request
         self.writer = streamWriterToStreamResponse(client_writer, request, lock)
         self._loop = loop
-
-import json
 
 class ServerConnector(aiohttp.BaseConnector):
     def __init__(self, port, request, replylock):
@@ -249,36 +251,46 @@ class ServerConnector(aiohttp.BaseConnector):
         return self._protocol
 
 async def get_bitcoind_server():
-      bitcoind = await asyncio.create_subprocess_shell("rm -rf /home/janus/.bitcoin/regtest && /home/janus/bitcoin-simnet/bin/bitcoind", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-      return bitcoind
+    t = tempfile.NamedTemporaryFile(prefix="bitcoind_config", delete=False)
+    t.write(b"""
+regtest=1
+txindex=1
+printtoconsole=1
+addrindex=1
+rpcuser=doggman
+rpcpassword=donkey
+rpcbind=0.0.0.0
+rpcallowip=127.0.0.1
+""")
+    t.flush()
+    bitcoind = await asyncio.create_subprocess_shell("rm -rf /home/janus/.bitcoin/regtest && /home/janus/bitcoin-simnet/bin/bitcoind -prematurewitness -conf=" + t.name)
+    return bitcoind
 
-import shlex
-import tempfile
-import os
+def get_electrumx_server():
+    return asyncio.create_subprocess_shell("rm -rf /home/janus/electrumx-db/ && mkdir /home/janus/electrumx-db && COIN=Bitcoin SSL_KEYFILE=/home/janus/electrumx/key.pem SSL_CERTFILE=/home/janus/electrumx/cert.pem TCP_PORT=50001 SSL_PORT=50002 RPC_PORT=8000 NET=simnet DAEMON_URL=http://doggman:donkey@127.0.0.1:18332 DB_DIRECTORY=/home/janus/electrumx-db /home/janus/electrumx/electrumx_server.py", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-def get_btcd_server():
-      t = tempfile.NamedTemporaryFile(prefix="btcd_config", delete=False)
-      t.write(b"""
-        rpcuser=youruser
-        rpcpass=SomeDecentp4ssw0rd
-        simnet=1
-        miningaddr=SjBcfBCzeAHBCoWiGrwR7Emw4uoRUvKAfY
-        txindex=1
-        addrindex=1
-        rpclisten=127.0.0.1
-      """)
-      t.flush()
-      datadir=tempfile.TemporaryDirectory(prefix="btcd_datadir")
-      # Note that ~/.btcd is still used for e.g. the rpccert!
-      cmd = "/home/janus/go/bin/btcd -C " + shlex.quote(t.name) + " --datadir " + shlex.quote(datadir.name) + " --connect localhost"
-      return asyncio.create_subprocess_shell(cmd)#, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+def get_btcd_server(miningaddr):
+    t = tempfile.NamedTemporaryFile(prefix="btcd_config", delete=False)
+    t.write(b"""
+      rpcuser=youruser
+      rpcpass=SomeDecentp4ssw0rd
+      simnet=1
+      miningaddr=""" + miningaddr.encode("ascii") + b"""
+      txindex=1
+      addrindex=1
+      rpclisten=127.0.0.1
+    """)
+    t.flush()
+    datadir=tempfile.TemporaryDirectory(prefix="btcd_datadir")
+    # Note that ~/.btcd is still used for e.g. the rpccert!
+    cmd = "/home/janus/go/bin/btcd -C " + shlex.quote(t.name) + " --datadir " + shlex.quote(datadir.name) + " --connect localhost"
+    return asyncio.create_subprocess_shell(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-import subprocess
-
-async def get_lnd_server(electrumport, peerport, rpcport, restport):
+async def get_lnd_server(electrumport, peerport, rpcport, restport, silent=True):
       datadir=tempfile.TemporaryDirectory(prefix="lnd_datadir")
       logdir=tempfile.TemporaryDirectory(prefix="lnd_logdir")
-      lnd = await asyncio.create_subprocess_shell("/home/janus/go/bin/lnd --no-macaroons --configfile=/dev/null --rpcport=" + str(rpcport) + " --restport=" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir.name + " --peerport=" + str(peerport) + " --bitcoin.active --bitcoin.simnet --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:18556 --noencryptwallet --electrumport " + str(electrumport))
+      kwargs = {"stdout":subprocess.PIPE, "stderr":subprocess.PIPE} if silent else {}
+      lnd = await asyncio.create_subprocess_shell("/home/janus/go/bin/lnd --no-macaroons --configfile=/dev/null --rpcport=" + str(rpcport) + " --restport=" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir.name + " --peerport=" + str(peerport) + " --bitcoin.active --bitcoin.simnet --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:18556 --noencryptwallet --electrumport " + str(electrumport), **kwargs)
       return lnd
 
 def mkhandler(port):
@@ -294,7 +306,7 @@ def mkhandler(port):
               with async_timeout.timeout(30):
                   async with aiohttp.ClientSession(connector=connector) as session:
                       # TODO replace replylock with reply coming through response
-                      async with session.post("http://localhost:" + str(port) + str(request.rel_url), data=content) as response: # TODO butcher relurl
+                      async with session.post("http://localhost:" + str(port) + str(request.rel_url), data=content) as response:
                           #body = await response.text()
                           #print("response received", body)
                           await replylock.acquire()
@@ -315,11 +327,11 @@ def mkhandler(port):
   app.router.add_route("*", "", all_handler)
   return app.make_handler()
 
-def make_chain(offset):
+def make_chain(offset, silent=True):
   coro = loop.create_server(make_h2handler(8433+offset), '127.0.0.1', 9090+offset)
   elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
-  lnd = get_lnd_server(9090+offset, peerport=9735+offset, rpcport=10009+offset, restport=8080+offset)
+  lnd = get_lnd_server(9090+offset, peerport=9735+offset, rpcport=10009+offset, restport=8080+offset, silent=silent)
   return [coro, elec1, lnd]
 
-server = loop.run_until_complete(asyncio.gather(*make_chain(0), *make_chain(5), get_btcd_server(), get_bitcoind_server()))
+server = loop.run_until_complete(asyncio.gather(*make_chain(0, False), *make_chain(5), get_electrumx_server(), get_btcd_server(sys.argv[1]), get_bitcoind_server()))
 loop.run_forever()
