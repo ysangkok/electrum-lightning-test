@@ -262,21 +262,23 @@ def get_btcd_server():
         rpcuser=youruser
         rpcpass=SomeDecentp4ssw0rd
         simnet=1
-        miningaddr=sb1q57sly3r9n9y78wmjx6cn8fxmc6x402x9wlmqlj
+        miningaddr=SjBcfBCzeAHBCoWiGrwR7Emw4uoRUvKAfY
         txindex=1
         addrindex=1
         rpclisten=127.0.0.1
       """)
       t.flush()
       datadir=tempfile.TemporaryDirectory(prefix="btcd_datadir")
+      # Note that ~/.btcd is still used for e.g. the rpccert!
       cmd = "/home/janus/go/bin/btcd -C " + shlex.quote(t.name) + " --datadir " + shlex.quote(datadir.name) + " --connect localhost"
-      return asyncio.create_subprocess_shell(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      return asyncio.create_subprocess_shell(cmd)#, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 import subprocess
 
-async def get_lnd_server(port):
-      print("getting server stub for ", port) # TODO
-      lnd = await asyncio.create_subprocess_shell("rm -rf /home/janus/.lnd && /home/janus/go/bin/lnd --bitcoin.active --bitcoin.simnet --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:18556 --noencryptwallet --electrumport " + str(port))
+async def get_lnd_server(electrumport, peerport, rpcport, restport):
+      datadir=tempfile.TemporaryDirectory(prefix="lnd_datadir")
+      logdir=tempfile.TemporaryDirectory(prefix="lnd_logdir")
+      lnd = await asyncio.create_subprocess_shell("/home/janus/go/bin/lnd --no-macaroons --configfile=/dev/null --rpcport=" + str(rpcport) + " --restport=" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir.name + " --peerport=" + str(peerport) + " --bitcoin.active --bitcoin.simnet --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:18556 --noencryptwallet --electrumport " + str(electrumport))
       return lnd
 
 def mkhandler(port):
@@ -291,6 +293,7 @@ def mkhandler(port):
           try:
               with async_timeout.timeout(30):
                   async with aiohttp.ClientSession(connector=connector) as session:
+                      # TODO replace replylock with reply coming through response
                       async with session.post("http://localhost:" + str(port) + str(request.rel_url), data=content) as response: # TODO butcher relurl
                           #body = await response.text()
                           #print("response received", body)
@@ -312,10 +315,11 @@ def mkhandler(port):
   app.router.add_route("*", "", all_handler)
   return app.make_handler()
 
-async def create_servers():
-  coro = loop.create_server(make_h2handler(8433), '127.0.0.1', 9090)
-  elec1 = loop.create_server(mkhandler(8432), '127.0.0.1', 8433)
-  #elec2 = loop.create_server(mkhandler(8434), '127.0.0.1', 8435)
-  return asyncio.gather(coro, elec1, get_lnd_server(9090), get_btcd_server(), get_bitcoind_server())
-server = loop.run_until_complete(create_servers())
+def make_chain(offset):
+  coro = loop.create_server(make_h2handler(8433+offset), '127.0.0.1', 9090+offset)
+  elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
+  lnd = get_lnd_server(9090+offset, peerport=9735+offset, rpcport=10009+offset, restport=8080+offset)
+  return [coro, elec1, lnd]
+
+server = loop.run_until_complete(asyncio.gather(*make_chain(0), *make_chain(5), get_btcd_server(), get_bitcoind_server()))
 loop.run_forever()
