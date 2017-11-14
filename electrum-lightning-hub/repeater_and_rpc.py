@@ -103,8 +103,11 @@ class H2Protocol(asyncio.Protocol):
       # ['FetchRootKey', 'ConfirmedBalance', 'ListUnspentWitness', 'NewAddress']
       methods = [x for x in rpc_pb2_grpc.ElectrumBridgeServicer.__dict__.keys() if not x.startswith("__")]
 
+      path = dict(headers)[":path"]
+      print("PATH:", path)
+
       for methodname in methods:
-        if methodname in dict(headers)[":path"]:
+        if methodname in path:
           a = rpc_pb2.__dict__[methodname + "Request"]()
           # https://grpc.io/docs/guides/wire.html
           if body[0] != 0:
@@ -153,26 +156,21 @@ class H2Protocol(asyncio.Protocol):
             self.transport.write(self.conn.data_to_send())
           asyncio.ensure_future(res).add_done_callback(done)
           return
-      raise Exception("method " + dict(headers)[":path"] + " not found!")
+      raise Exception("method " + path + " not found!")
 
 import asyncio
 from jsonrpc_async import Server
 
-first = True
+servers = {}
 
-serv1 = Server("http://localhost:8433")
-serv2 = Server("http://localhost:8435")
-
-def handler():
-  global first
-  if first:
-    print("used first")
-    elec = serv1
-    first = False
-  else:
-    print("using SECOND")
-    elec = serv2
-  return H2Protocol(elec)
+def make_h2handler(port):
+  def handler():
+    if port in servers:
+      return servers[port]
+    servers[port] = H2Protocol(Server("http://localhost:" + str(port)))
+    print("made new client connecting to port", port)
+    return servers[port]
+  return handler
 
 from aiohttp import web
 import aiohttp
@@ -250,6 +248,37 @@ class ServerConnector(aiohttp.BaseConnector):
         await self.client_connected.acquire()
         return self._protocol
 
+async def get_bitcoind_server():
+      bitcoind = await asyncio.create_subprocess_shell("rm -rf /home/janus/.bitcoin/regtest && /home/janus/bitcoin-simnet/bin/bitcoind", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      return bitcoind
+
+import shlex
+import tempfile
+import os
+
+def get_btcd_server():
+      t = tempfile.NamedTemporaryFile(prefix="btcd_config", delete=False)
+      t.write(b"""
+        rpcuser=youruser
+        rpcpass=SomeDecentp4ssw0rd
+        simnet=1
+        miningaddr=sb1q57sly3r9n9y78wmjx6cn8fxmc6x402x9wlmqlj
+        txindex=1
+        addrindex=1
+        rpclisten=127.0.0.1
+      """)
+      t.flush()
+      datadir=tempfile.TemporaryDirectory(prefix="btcd_datadir")
+      cmd = "/home/janus/go/bin/btcd -C " + shlex.quote(t.name) + " --datadir " + shlex.quote(datadir.name) + " --connect localhost"
+      return asyncio.create_subprocess_shell(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+import subprocess
+
+async def get_lnd_server(port):
+      print("getting server stub for ", port) # TODO
+      lnd = await asyncio.create_subprocess_shell("rm -rf /home/janus/.lnd && /home/janus/go/bin/lnd --bitcoin.active --bitcoin.simnet --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:18556 --noencryptwallet --electrumport " + str(port))
+      return lnd
+
 def mkhandler(port):
   async def all_handler(request):
       print("all handler {}".format(port))
@@ -262,7 +291,7 @@ def mkhandler(port):
           try:
               with async_timeout.timeout(30):
                   async with aiohttp.ClientSession(connector=connector) as session:
-                      async with session.post("http://localhost:" + str(port) + str(request.rel_url), data=content) as response:
+                      async with session.post("http://localhost:" + str(port) + str(request.rel_url), data=content) as response: # TODO butcher relurl
                           #body = await response.text()
                           #print("response received", body)
                           await replylock.acquire()
@@ -284,9 +313,9 @@ def mkhandler(port):
   return app.make_handler()
 
 async def create_servers():
-  coro = loop.create_server(handler, '127.0.0.1', 9090)
+  coro = loop.create_server(make_h2handler(8433), '127.0.0.1', 9090)
   elec1 = loop.create_server(mkhandler(8432), '127.0.0.1', 8433)
-  elec2 = loop.create_server(mkhandler(8434), '127.0.0.1', 8435)
-  return asyncio.gather(coro, elec1, elec2)
+  #elec2 = loop.create_server(mkhandler(8434), '127.0.0.1', 8435)
+  return asyncio.gather(coro, elec1, get_lnd_server(9090), get_btcd_server(), get_bitcoind_server())
 server = loop.run_until_complete(create_servers())
 loop.run_forever()
