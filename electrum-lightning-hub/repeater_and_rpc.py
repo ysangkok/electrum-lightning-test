@@ -24,11 +24,12 @@ import aiohttp.client_reqrep
 import traceback
 import async_timeout
 import json
-import subprocess
 import shlex
 import tempfile
 import os
 import sys
+
+from subprocess import DEVNULL
 
 from distutils.version import StrictVersion
 assert StrictVersion(aiohttp.__version__) >= StrictVersion("2.3.2")
@@ -222,7 +223,6 @@ class ServerConnector(aiohttp.BaseConnector):
         self.reply = None
     async def _create_connection(self, req):
         async def client_connected_tb(client_reader, client_writer):
-            print("client connected")
             lock = asyncio.Lock()
             await lock.acquire()
             self._protocol = MyProtocol(client_reader, client_writer, self.request, lock)
@@ -250,7 +250,7 @@ class ServerConnector(aiohttp.BaseConnector):
         await self.client_connected.acquire()
         return self._protocol
 
-async def get_bitcoind_server():
+def get_bitcoind_server():
     t = tempfile.NamedTemporaryFile(prefix="bitcoind_config", delete=False)
     t.write(b"""
 regtest=1
@@ -263,11 +263,19 @@ rpcbind=0.0.0.0
 rpcallowip=127.0.0.1
 """)
     t.flush()
-    bitcoind = await asyncio.create_subprocess_shell("rm -rf /home/janus/.bitcoin/regtest && /home/janus/bitcoin-simnet/bin/bitcoind -prematurewitness -conf=" + t.name)
-    return bitcoind
+    return asyncio.create_subprocess_shell("rm -rf /home/janus/.bitcoin/regtest && /home/janus/bitcoin-simnet/bin/bitcoind -conf=" + t.name, stdout=DEVNULL, stderr=DEVNULL)
 
 def get_electrumx_server():
-    return asyncio.create_subprocess_shell("rm -rf /home/janus/electrumx-db/ && mkdir /home/janus/electrumx-db && COIN=Bitcoin SSL_KEYFILE=/home/janus/electrumx/key.pem SSL_CERTFILE=/home/janus/electrumx/cert.pem TCP_PORT=50001 SSL_PORT=50002 RPC_PORT=8000 NET=simnet DAEMON_URL=http://doggman:donkey@127.0.0.1:18332 DB_DIRECTORY=/home/janus/electrumx-db /home/janus/electrumx/electrumx_server.py", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    os.environ["TCP_PORT"] = "50001"
+    os.environ["SSL_PORT"] = "50002"
+    os.environ["RPC_PORT"] = "8000"
+    os.environ["NET"] = "simnet"
+    os.environ["DAEMON_URL"] = "http://doggman:donkey@127.0.0.1:18332"
+    os.environ["DB_DIRECTORY"] = "/home/janus/electrumx-db"
+    os.environ["SSL_CERTFILE"] = "/home/janus/electrumx/cert.pem"
+    os.environ["SSL_KEYFILE"] = "/home/janus/electrumx/key.pem"
+    os.environ["COIN"] = "Bitcoin"
+    return asyncio.create_subprocess_shell("rm -rf /home/janus/electrumx-db/ && mkdir /home/janus/electrumx-db && /home/janus/electrumx/electrumx_server.py", stdout=DEVNULL, stderr=DEVNULL)
 
 def get_btcd_server(miningaddr):
     t = tempfile.NamedTemporaryFile(prefix="btcd_config", delete=False)
@@ -284,18 +292,17 @@ def get_btcd_server(miningaddr):
     datadir=tempfile.TemporaryDirectory(prefix="btcd_datadir")
     # Note that ~/.btcd is still used for e.g. the rpccert!
     cmd = "/home/janus/go/bin/btcd -C " + shlex.quote(t.name) + " --datadir " + shlex.quote(datadir.name) + " --connect localhost"
-    return asyncio.create_subprocess_shell(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return asyncio.create_subprocess_shell(cmd, stdout=DEVNULL, stderr=DEVNULL)
 
 async def get_lnd_server(electrumport, peerport, rpcport, restport, silent=True):
       datadir=tempfile.TemporaryDirectory(prefix="lnd_datadir")
       logdir=tempfile.TemporaryDirectory(prefix="lnd_logdir")
-      kwargs = {"stdout":subprocess.PIPE, "stderr":subprocess.PIPE} if silent else {}
+      kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
       lnd = await asyncio.create_subprocess_shell("/home/janus/go/bin/lnd --no-macaroons --configfile=/dev/null --rpcport=" + str(rpcport) + " --restport=" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir.name + " --peerport=" + str(peerport) + " --bitcoin.active --bitcoin.simnet --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:18556 --noencryptwallet --electrumport " + str(electrumport), **kwargs)
       return lnd
 
 def mkhandler(port):
   async def all_handler(request):
-      print("all handler {}".format(port))
       content = await request.content.read()
       while True:
           replylock = asyncio.Lock()
@@ -310,7 +317,6 @@ def mkhandler(port):
                           #body = await response.text()
                           #print("response received", body)
                           await replylock.acquire()
-                          print("replylock acquired")
                           if connector.reply: return web.Response(body=connector.reply, content_type="application/json")
                           else: return web.Response(status=500)
           except asyncio.TimeoutError:
