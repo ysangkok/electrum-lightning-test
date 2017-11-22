@@ -1,3 +1,4 @@
+import jsonrpc_base
 import asyncio
 import io
 import collections
@@ -30,6 +31,8 @@ import os
 import sys
 
 from subprocess import DEVNULL
+
+from socksserver import make_server
 
 from distutils.version import StrictVersion
 assert StrictVersion(aiohttp.__version__) >= StrictVersion("2.3.2")
@@ -146,6 +149,8 @@ class H2Protocol(asyncio.Protocol):
               print("result", fut.exception(), fut.result())
             except Exception as e:
               print("While handling " + methodname)
+              if type(e) is jsonrpc_base.TransportError:
+                  print(e.args[-1])
               traceback.print_exc()
               response_headers = (
                   (':status', '500'),
@@ -219,8 +224,8 @@ class ServerConnector(aiohttp.BaseConnector):
         aiohttp.BaseConnector.__init__(self)
         self.port = port
         self.request = request
-        self.client_connected = asyncio.Lock()
         self.reply = None
+        self.client_connected = asyncio.Lock()
     async def _create_connection(self, req):
         async def client_connected_tb(client_reader, client_writer):
             lock = asyncio.Lock()
@@ -241,6 +246,7 @@ class ServerConnector(aiohttp.BaseConnector):
                     self.reply = json.dumps(parsed).encode("utf-8")
             except asyncio.TimeoutError:
                 self.reply = None
+            # this is not the actual response. TODO remove this ugly hack
             self._protocol.data_received(b"HTTP/1.0 200 OK\r\n\r\n")
             self.replylock.release()
             #self._protocol.feed_data(repl)
@@ -325,6 +331,9 @@ def mkhandler(port):
               await connector.server.wait_closed()
               if connector.reply:
                   return web.Response(body=connector.reply, content_type="application/json")
+          except Exception as e:
+              traceback.print_exc()
+              raise e
           finally:
               if connector.server:
                   connector.server.close()
@@ -339,5 +348,9 @@ def make_chain(offset, silent=True):
   lnd = get_lnd_server(9090+offset, peerport=9735+offset, rpcport=10009+offset, restport=8080+offset, silent=silent)
   return [coro, elec1, lnd]
 
-server = loop.run_until_complete(asyncio.gather(*make_chain(0, False), *make_chain(5), get_electrumx_server(), get_btcd_server(sys.argv[1]), get_bitcoind_server()))
+user_port_association = {b"donkey": 8432}
+
+coinbaseAddress = sys.argv[1]
+
+server = loop.run_until_complete(asyncio.gather(make_server(user_port_association), *make_chain(0, False), get_electrumx_server(), get_btcd_server(coinbaseAddress), get_bitcoind_server()))
 loop.run_forever()
