@@ -8,10 +8,15 @@ async def handler(request):
     content = await request.content.read()
     parsed_request = json.loads(content.decode("ascii"))
     proc = await asyncio.create_subprocess_shell(cmd="~/go/bin/lncli " + parsed_request["method"] + " " + " ".join(shlex.quote(x) for x in parsed_request["params"]), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    await proc.wait()
-    response = {"result": {"stdout": (await proc.stdout.read()).decode("ascii"),
-                           "stderr": (await proc.stderr.read()).decode("ascii"),
-                           "returncode": proc.returncode}}
+    response = {}
+    try:
+      await asyncio.wait_for(proc.wait(), 5)
+    except asyncio.TimeoutError:
+      response = {"result": "timeout in lncli_endpoint"}
+    else:  
+      response = {"result": {"stdout": (await proc.stdout.read()).decode("ascii"),
+                             "stderr": (await proc.stderr.read()).decode("ascii"),
+                             "returncode": proc.returncode}}
     return web.Response(body=json.dumps(response))
 
 def make_app():

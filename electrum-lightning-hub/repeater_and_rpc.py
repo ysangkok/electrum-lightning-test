@@ -18,12 +18,7 @@ from google.protobuf import json_format
 import json
 
 from jsonrpc_async import Server
-from aiohttp import web
-import aiohttp
-import aiohttp.client_exceptions
-import aiohttp.client_reqrep
 import traceback
-import async_timeout
 import json
 import shlex
 import tempfile
@@ -32,10 +27,11 @@ import sys
 
 from subprocess import DEVNULL
 
-from socksserver import make_server
+import socksserver
 
-from distutils.version import StrictVersion
-assert StrictVersion(aiohttp.__version__) >= StrictVersion("2.3.2")
+from aiohttp import web
+
+from lncli_endpoint import create_on_loop
 
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
@@ -146,18 +142,19 @@ class H2Protocol(asyncio.Protocol):
           res = getattr(self.elec, methodname)(jso)
           def done(fut):
             try:
-              print("result", fut.exception(), fut.result())
+              fut.exception()
+              print("result", fut.result())
             except Exception as e:
               print("While handling " + methodname)
-              if type(e) is jsonrpc_base.TransportError:
-                  print(e.args[-1])
               traceback.print_exc()
               response_headers = (
                   (':status', '500'),
                   ('server', 'asyncio-h2'),
               )
               self.conn.send_headers(stream_id, response_headers, end_stream=True)
-              self.transport.write(self.conn.data_to_send())
+              data = self.conn.data_to_send()
+              self.transport.write(data)
+              asyncio.ensure_future(killQueue.put(data))
               return
             b = rpc_pb2.__dict__[methodname + "Response"]()
             try:
@@ -175,7 +172,9 @@ class H2Protocol(asyncio.Protocol):
             self.conn.send_headers(stream_id, response_headers)
             self.conn.send_data(stream_id, bajts)
             self.conn.send_headers(stream_id, (("grpc-status", "0",),), end_stream=True)
-            self.transport.write(self.conn.data_to_send())
+            data = self.conn.data_to_send()
+            self.transport.write(data)
+            asyncio.ensure_future(killQueue.put(data))
           asyncio.ensure_future(res).add_done_callback(done)
           return
       raise Exception("method " + path + " not found!")
@@ -190,71 +189,6 @@ def make_h2handler(port):
     print("made new client connecting to port", port)
     return servers[port]
   return handler
-
-
-loop = asyncio.get_event_loop()
-
-def streamWriterToStreamResponse(streamWriter, request, lock):
-    class MyResponse(web.Response):
-        @property
-        def transport(self):
-            return streamWriter.transport
-        def __init__(self):
-            super(MyResponse, self).__init__()
-            self.prepare(request)
-            self._payload_writer = streamWriter
-        def set_tcp_nodelay(self, val):
-            pass
-        def release(self):
-            lock.release()
-    resp = MyResponse()
-    resp.available = True
-    return resp
-
-class MyProtocol(aiohttp.client_proto.ResponseHandler):
-    def __init__(self, client_reader, client_writer, request, lock):
-        super(MyProtocol, self).__init__()
-        self.request = request
-        self.writer = streamWriterToStreamResponse(client_writer, request, lock)
-        self._loop = loop
-
-class ServerConnector(aiohttp.BaseConnector):
-    def __init__(self, port, request, replylock):
-        self.replylock = replylock
-        aiohttp.BaseConnector.__init__(self)
-        self.port = port
-        self.request = request
-        self.reply = None
-        self.client_connected = asyncio.Lock()
-    async def _create_connection(self, req):
-        async def client_connected_tb(client_reader, client_writer):
-            lock = asyncio.Lock()
-            await lock.acquire()
-            self._protocol = MyProtocol(client_reader, client_writer, self.request, lock)
-            self.client_connected.release()
-            try:
-                with async_timeout.timeout(3): # electrum must answer within 3 seconds
-                    await lock.acquire()
-                    parsed = None
-                    while True:
-                        line = await client_reader.readline()
-                        try:
-                            parsed = json.loads(line.strip())
-                            break
-                        except:
-                            await asyncio.sleep(0.1)
-                    self.reply = json.dumps(parsed).encode("utf-8")
-            except asyncio.TimeoutError:
-                self.reply = None
-            # this is not the actual response. TODO remove this ugly hack
-            self._protocol.data_received(b"HTTP/1.0 200 OK\r\n\r\n")
-            self.replylock.release()
-            #self._protocol.feed_data(repl)
-            #self._protocol.feed_eof()
-        server = await asyncio.start_server(client_connected_tb, port=self.port)
-        self.server = server
-        await self.client_connected.acquire()
-        return self._protocol
 
 def get_bitcoind_server():
     t = tempfile.NamedTemporaryFile(prefix="bitcoind_config", delete=False)
@@ -308,36 +242,34 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent=True)
       return lnd
 
 def mkhandler(port):
+  q = asyncio.Queue()
   async def all_handler(request):
       content = await request.content.read()
-      while True:
-          replylock = asyncio.Lock()
-          await replylock.acquire()
-          connector = ServerConnector(port, request, replylock)
-          await connector.client_connected.acquire()
-          try:
-              with async_timeout.timeout(30):
-                  async with aiohttp.ClientSession(connector=connector) as session:
-                      # TODO replace replylock with reply coming through response
-                      async with session.post("http://localhost:" + str(port) + str(request.rel_url), data=content) as response:
-                          #body = await response.text()
-                          #print("response received", body)
-                          await replylock.acquire()
-                          if connector.reply: return web.Response(body=connector.reply, content_type="application/json")
-                          else: return web.Response(status=500)
-          except asyncio.TimeoutError:
-              print("timeout, retrying")
-              connector.server.close()
-              await connector.server.wait_closed()
-              if connector.reply:
-                  return web.Response(body=connector.reply, content_type="application/json")
-          except Exception as e:
-              traceback.print_exc()
-              raise e
-          finally:
-              if connector.server:
-                  connector.server.close()
-                  await connector.server.wait_closed()
+      print("received request with method", json.loads(content)["method"])
+
+      async def client_connected_tb(client_reader, client_writer):
+          print("sent request with method", json.loads(content)["method"])
+          client_writer.write(b"POST / HTTP/1.0\r\nContent-length: " + str(len(content)).encode("ascii") + b"\r\nContent-type: application/json\r\n\r\n" + content)
+          await client_writer.drain()
+
+          # these two lines could be after q.put
+          #client_writer.close()
+
+          while True:
+              line = await client_reader.readline()
+              print("read line", line)
+              try:
+                  parsed = json.loads(line.strip())
+                  break
+              except:
+                  await asyncio.sleep(0.1)
+          await q.put(json.dumps(parsed).encode("utf-8"))
+      server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
+      resp = await q.get()
+      print("waiting for closed with resp", resp)
+      server.close()
+      await server.wait_closed()
+      return web.Response(body=resp, content_type="application/json")
   app = web.Application()
   app.router.add_route("*", "", all_handler)
   return app.make_handler()
@@ -348,9 +280,14 @@ def make_chain(offset, silent=True):
   lnd = get_lnd_server(9090+offset, peerport=9735+offset, rpcport=10009+offset, restport=8080+offset, silent=silent)
   return [coro, elec1, lnd]
 
-user_port_association = {b"donkey": 8432}
-
 coinbaseAddress = sys.argv[1]
 
-server = loop.run_until_complete(asyncio.gather(make_server(user_port_association), *make_chain(0, False), get_electrumx_server(), get_btcd_server(coinbaseAddress), get_bitcoind_server()))
+loop = asyncio.get_event_loop()
+
+readQueue = asyncio.Queue()
+writeQueue = asyncio.Queue()
+killQueue = asyncio.Queue()
+srv = asyncio.start_server(socksserver.make_handler(readQueue, writeQueue), '127.0.0.1', 1080)
+
+server = loop.run_until_complete(asyncio.gather(create_on_loop(loop), srv, socksserver.queueMonitor(readQueue, writeQueue, 8432, killQueue), *make_chain(0, False), get_electrumx_server(), get_btcd_server(coinbaseAddress), get_bitcoind_server()))
 loop.run_forever()
