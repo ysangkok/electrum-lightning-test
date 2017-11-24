@@ -19,7 +19,6 @@ import json
 
 from jsonrpc_async import Server
 import traceback
-import json
 import shlex
 import tempfile
 import os
@@ -245,25 +244,27 @@ def mkhandler(port):
   q = asyncio.Queue()
   async def all_handler(request):
       content = await request.content.read()
-      print("received request with method", json.loads(content)["method"])
+      parsedrequest = json.loads(content)
+      print("received request with method", parsedrequest["method"])
 
       async def client_connected_tb(client_reader, client_writer):
-          print("sent request with method", json.loads(content)["method"])
+          print("trying to send request", parsedrequest["method"])
           client_writer.write(b"POST / HTTP/1.0\r\nContent-length: " + str(len(content)).encode("ascii") + b"\r\nContent-type: application/json\r\n\r\n" + content)
           await client_writer.drain()
+          print("sent request with method", parsedrequest["method"])
 
-          # these two lines could be after q.put
           #client_writer.close()
 
+          data = b""
           while True:
-              line = await client_reader.readline()
-              print("read line", line)
+              data += await client_reader.read()
               try:
-                  parsed = json.loads(line.strip())
+                  parsedresponse = json.loads(data.split(b"\n")[-1].decode("ascii"))
+                  assert parsedresponse["id"] == parsedrequest["id"], "mismatched response " + repr(parsedresponse) + " for request " + repr(parsedrequest)
                   break
               except:
                   await asyncio.sleep(0.1)
-          await q.put(json.dumps(parsed).encode("utf-8"))
+          await q.put(json.dumps(parsedresponse).encode("utf-8"))
       server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
       resp = await q.get()
       print("waiting for closed with resp", resp)

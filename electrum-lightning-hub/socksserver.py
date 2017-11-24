@@ -6,6 +6,8 @@ import sys
 import traceback
 from queue import Queue
 import json
+import async_timeout
+import concurrent.futures
 
 queue = asyncio.Queue()
 
@@ -15,7 +17,6 @@ def make_handler(read, toWrite):
         assert len(data) == 1
         if data[0] != 0x04:
             print("closing because first byte is not 0x04.", data)
-            reader.close()
             writer.close()
             return
         data = await reader.read(1)
@@ -24,7 +25,6 @@ def make_handler(read, toWrite):
         port = int.from_bytes(await reader.read(2), byteorder="big")
         if port == 80:
             print("port 80 was asked for: " + repr(data))
-            reader.close()
             writer.close()
             return
         hostname = socket.inet_ntop(socket.AF_INET, await reader.read(4))
@@ -35,8 +35,9 @@ def make_handler(read, toWrite):
 
         data = await reader.read(1)
         if data != b"\x00":
-            print(data)
-            sys.exit(1)
+            print("unexpected nonnull: " + repr(data))
+            writer.close()
+            return
 
         req = await toWrite.get()
         writer.write(req)
@@ -44,17 +45,26 @@ def make_handler(read, toWrite):
 
         data = b""
 
-        while not reader.at_eof():
-          try:
-              payload = json.loads(data.split(b"\n")[-1].decode("ascii"))
-          except ValueError:
-              data += await reader.read(1)
-          else:
-              await read.put(data)
-              writer.close()
-              print("put response")
-              return
-        await toWrite.put(req)
+        with async_timeout.timeout(3):
+          while not reader.at_eof():
+              try:
+                  data += await reader.read()
+              except ConnectionResetError:
+                  print("connection reset")
+                  break
+              except concurrent.futures.CancelledError:
+                  print("cancelled. timeout?")
+                  break
+        try:
+            json.loads(data.split(b"\n")[-1].decode("ascii"))
+        except ValueError:
+            await toWrite.put(req)
+            print("incomplete data: " + repr(data))
+            print("put back on queue, queue now", toWrite.qsize())
+        else:
+            await read.put(data)
+            writer.close()
+            print("put response")
     return handler
 
 async def queueMonitor(readQueue, writeQueue, port, killQueue):

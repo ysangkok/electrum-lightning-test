@@ -10,7 +10,7 @@ async def handler(request):
     proc = await asyncio.create_subprocess_shell(cmd="~/go/bin/lncli " + parsed_request["method"] + " " + " ".join(shlex.quote(x) for x in parsed_request["params"]), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     response = {}
     try:
-      await asyncio.wait_for(proc.wait(), 5)
+      await asyncio.wait_for(proc.wait(), 15)
     except asyncio.TimeoutError:
       response = {"result": "timeout in lncli_endpoint"}
     else:  
