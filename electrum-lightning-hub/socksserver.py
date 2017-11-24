@@ -11,7 +11,7 @@ import concurrent.futures
 
 queue = asyncio.Queue()
 
-def make_handler(read, toWrite):
+def make_handler(assoc, realPortsSupplier):
     async def handler(reader, writer):
         data = await reader.read(1)
         assert len(data) == 1
@@ -22,12 +22,18 @@ def make_handler(read, toWrite):
         data = await reader.read(1)
         assert len(data) == 1
         assert data[0] == 0x01
-        port = int.from_bytes(await reader.read(2), byteorder="big")
+        portBytes = await reader.read(2)
+        port = int.from_bytes(portBytes, byteorder="big")
         if port == 80:
             print("port 80 was asked for: " + repr(data))
             writer.close()
             return
-        hostname = socket.inet_ntop(socket.AF_INET, await reader.read(4))
+        ipBytes = await reader.read(4)
+        hostname = socket.inet_ntop(socket.AF_INET, ipBytes)
+
+        portPair = await realPortsSupplier.get(ipBytes + portBytes)
+        realPort = portPair.electrumReverseHTTPPort
+        read, toWrite = assoc[realPort].readQueue, assoc[realPort].writeQueue
 
         #print('IGNORING to:', hostname, port)
         writer.write(b"\x00\x5a" + (6*b"\x00"))

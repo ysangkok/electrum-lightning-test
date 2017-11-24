@@ -35,12 +35,13 @@ from lncli_endpoint import create_on_loop
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
 class H2Protocol(asyncio.Protocol):
-    def __init__(self, elec):
+    def __init__(self, elec, killQueuePort):
         config = H2Configuration(client_side=False, header_encoding='utf-8')
         self.conn = H2Connection(config=config)
         self.transport = None
         self.stream_data = {}
         self.elec = elec
+        self.killQueuePort = killQueuePort
 
     def connection_made(self, transport: asyncio.Transport):
         self.transport = transport
@@ -153,7 +154,7 @@ class H2Protocol(asyncio.Protocol):
               self.conn.send_headers(stream_id, response_headers, end_stream=True)
               data = self.conn.data_to_send()
               self.transport.write(data)
-              asyncio.ensure_future(killQueue.put(data))
+              asyncio.ensure_future(assoc[self.killQueuePort].killQueue.put(data))
               return
             b = rpc_pb2.__dict__[methodname + "Response"]()
             try:
@@ -173,18 +174,18 @@ class H2Protocol(asyncio.Protocol):
             self.conn.send_headers(stream_id, (("grpc-status", "0",),), end_stream=True)
             data = self.conn.data_to_send()
             self.transport.write(data)
-            asyncio.ensure_future(killQueue.put(data))
+            asyncio.ensure_future(assoc[self.killQueuePort].killQueue.put(data))
           asyncio.ensure_future(res).add_done_callback(done)
           return
       raise Exception("method " + path + " not found!")
 
 servers = {}
 
-def make_h2handler(port):
+def make_h2handler(port, killQueuePort):
   def handler():
     if port in servers:
       return servers[port]
-    servers[port] = H2Protocol(Server("http://localhost:" + str(port)))
+    servers[port] = H2Protocol(Server("http://localhost:" + str(port)), killQueuePort)
     print("made new client connecting to port", port)
     return servers[port]
   return handler
@@ -275,20 +276,49 @@ def mkhandler(port):
   app.router.add_route("*", "", all_handler)
   return app.make_handler()
 
+#Maps ports to queues
+assoc = {}
+
+class Queues:
+    def __init__(self):
+        self.readQueue = asyncio.Queue()
+        self.writeQueue = asyncio.Queue()
+        self.killQueue = asyncio.Queue()
+
 def make_chain(offset, silent=True):
-  coro = loop.create_server(make_h2handler(8433+offset), '127.0.0.1', 9090+offset)
+  coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset), '127.0.0.1', 9090+offset)
   elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
   lnd = get_lnd_server(9090+offset, peerport=9735+offset, rpcport=10009+offset, restport=8080+offset, silent=silent)
-  return [coro, elec1, lnd]
+
+  assert 8432 + offset not in assoc
+  assoc[8432 + offset] = Queues()
+
+  queueMonitor = socksserver.queueMonitor(assoc[8432+offset].readQueue, assoc[8432+offset].writeQueue, 8432+offset, assoc[8432+offset].killQueue)
+  return [coro, elec1, lnd, queueMonitor]
+
+PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort'])
+
+class RealPortsSupplier:
+    def __init__(self):
+        self.currentOffset = 0
+        self.keysToOffset = {}
+    # returns keys for assoc
+    async def get(self, socksKey):
+        # socksKey is the first 6 bytes of a private key hash
+        if socksKey not in self.keysToOffset:
+            asyncio.ensure_future(asyncio.gather(*make_chain(self.currentOffset)))
+            self.currentOffset += 5
+            chosenPort = self.currentOffset - 5
+            self.keysToOffset[socksKey] = chosenPort
+        return PortPair(electrumReverseHTTPPort=8432 + self.keysToOffset[socksKey], lndRPCPort=10009 + self.keysToOffset[socksKey])
 
 coinbaseAddress = sys.argv[1]
 
 loop = asyncio.get_event_loop()
 
-readQueue = asyncio.Queue()
-writeQueue = asyncio.Queue()
-killQueue = asyncio.Queue()
-srv = asyncio.start_server(socksserver.make_handler(readQueue, writeQueue), '127.0.0.1', 1080)
+realPortsSupplier = RealPortsSupplier()
 
-server = loop.run_until_complete(asyncio.gather(create_on_loop(loop), srv, socksserver.queueMonitor(readQueue, writeQueue, 8432, killQueue), *make_chain(0, False), get_electrumx_server(), get_btcd_server(coinbaseAddress), get_bitcoind_server()))
+srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
+
+server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_btcd_server(coinbaseAddress), get_bitcoind_server()))
 loop.run_forever()
