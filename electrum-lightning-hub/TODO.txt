@@ -1,3 +1,0 @@
-spin up lnd instances
-client authentication
-actual lncli rpc

@@ -9,5 +9,5 @@ if [ ! -d $HOME/go/src/github.com/lightningnetwork/lnd ]; then
   echo "You need an lnd with electrum-bridge (ysangkok/lnd maybe?) checked out since we implement the interface from there, and need it to generate code"
   exit 1
 fi
-protoc -I$HOME/go/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis --python_out=lib/ln $HOME/go/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis/google/api/*.proto
+protoc -I$HOME/include -I$HOME/go/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis --python_out=lib/ln $HOME/go/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis/google/api/*.proto
 python3 -m grpc_tools.protoc -I $HOME/go/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis --proto_path $HOME/go/src/github.com/lightningnetwork/lnd/electrum-bridge --python_out=lib/ln --grpc_python_out=lib/ln ~/go/src/github.com/lightningnetwork/lnd/electrum-bridge/rpc.proto
