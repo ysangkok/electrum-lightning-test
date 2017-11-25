@@ -249,7 +249,8 @@ def mkhandler(port):
   q = asyncio.Queue()
   async def all_handler(request):
       content = await request.content.read()
-      parsedrequest = json.loads(content)
+      strcontent = content.decode("ascii") # python 3.5 and lower do not accept bytes in json.loads
+      parsedrequest = json.loads(strcontent)
       print("received request with method", parsedrequest["method"])
 
       async def client_connected_tb(client_reader, client_writer):
