@@ -334,10 +334,10 @@ else:
 realPortsSupplier = RealPortsSupplier(True, False)
 
 if simnet:
-    srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '0.0.0.0', 1080)
+    srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
     server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_btcd_server(coinbaseAddress), get_bitcoind_server()))
 else:
-    srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
+    srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '0.0.0.0', 1080)
     server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv))
 
 loop.run_forever()
