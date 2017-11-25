@@ -331,7 +331,7 @@ else:
     testnet = True
 
 
-realPortsSupplier = RealPortsSupplier(True, False)
+realPortsSupplier = RealPortsSupplier(simnet, testnet)
 
 if simnet:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
