@@ -313,7 +313,6 @@ class RealPortsSupplier:
 
         # socksKey is the first 6 bytes of a private key hash
         if socksKey not in self.keysToOffset:
-            self.keysToDatadir[socksKey] = datadir
             asyncio.ensure_future(asyncio.gather(*make_chain(self.currentOffset, False, self.simnet, self.testnet, datadir)))
             self.currentOffset += 5
             chosenPort = self.currentOffset - 5
