@@ -306,22 +306,19 @@ class RealPortsSupplier:
     def __init__(self, simnet, testnet):
         self.currentOffset = 0
         self.keysToOffset = {}
-        self.keysToDatadir = {}
         self.testnet = testnet
         self.simnet = simnet
     # returns keys for assoc
     async def get(self, socksKey):
+        datadir = "/tmp/lnd_datadir_" + binascii.hexlify(socksKey).decode("ascii")
+
         # socksKey is the first 6 bytes of a private key hash
         if socksKey not in self.keysToOffset:
-            datadir = tempfile.TemporaryDirectory(prefix="lnd_datadir")
-            datadir = datadir.name
             self.keysToDatadir[socksKey] = datadir
             asyncio.ensure_future(asyncio.gather(*make_chain(self.currentOffset, False, self.simnet, self.testnet, datadir)))
             self.currentOffset += 5
             chosenPort = self.currentOffset - 5
             self.keysToOffset[socksKey] = chosenPort
-        else:
-            datadir = self.keysToDatadir[socksKey]
         return PortPair(electrumReverseHTTPPort=8432 + self.keysToOffset[socksKey], lndRPCPort=10009 + self.keysToOffset[socksKey], datadir=datadir)
 
 
