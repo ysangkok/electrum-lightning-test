@@ -1,7 +1,6 @@
 import jsonrpc_base
+from jsonrpc_async import Server
 import asyncio
-import io
-import collections
 from typing import List, Tuple
 
 from h2.config import H2Configuration
@@ -16,14 +15,14 @@ from lib.ln import rpc_pb2_grpc, rpc_pb2
 from google.protobuf import json_format
 
 import json
-
-from jsonrpc_async import Server
+import io
+import binascii
+import collections
 import traceback
 import shlex
 import tempfile
 import os
 import sys
-
 from subprocess import DEVNULL
 
 import socksserver
