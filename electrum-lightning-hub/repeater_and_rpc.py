@@ -253,7 +253,7 @@ def mkhandler(port):
 
       async def client_connected_tb(client_reader, client_writer):
           print("trying to send request", parsedrequest["method"])
-          client_writer.write(b"POST / HTTP/1.0\r\nContent-length: " + str(len(content)).encode("ascii") + b"\r\nContent-type: application/json\r\n\r\n" + content)
+          client_writer.write(content)
           await client_writer.drain()
           print("sent request with method", parsedrequest["method"])
 

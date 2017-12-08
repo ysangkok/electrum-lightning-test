@@ -13,37 +13,11 @@ queue = asyncio.Queue()
 
 def make_handler(assoc, realPortsSupplier):
     async def handler(reader, writer):
-        data = await reader.read(1)
-        assert len(data) == 1
-        if data[0] != 0x04:
-            print("closing because first byte is not 0x04.", data)
-            writer.close()
-            return
-        data = await reader.read(1)
-        assert len(data) == 1
-        assert data[0] == 0x01
-        portBytes = await reader.read(2)
-        port = int.from_bytes(portBytes, byteorder="big")
-        if port == 80:
-            print("port 80 was asked for: " + repr(data))
-            writer.close()
-            return
-        ipBytes = await reader.read(4)
-        hostname = socket.inet_ntop(socket.AF_INET, ipBytes)
-
-        portPair = await realPortsSupplier.get(ipBytes + portBytes)
+        assert (await reader.read(5)) == b"MAGIC"
+        key = await reader.read(6)
+        portPair = await realPortsSupplier.get(key)
         realPort = portPair.electrumReverseHTTPPort
         read, toWrite = assoc[realPort].readQueue, assoc[realPort].writeQueue
-
-        #print('IGNORING to:', hostname, port)
-        writer.write(b"\x00\x5a" + (6*b"\x00"))
-        await writer.drain()
-
-        data = await reader.read(1)
-        if data != b"\x00":
-            print("unexpected nonnull: " + repr(data))
-            writer.close()
-            return
 
         req = await toWrite.get()
         writer.write(req)
