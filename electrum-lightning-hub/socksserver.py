@@ -13,38 +13,47 @@ queue = asyncio.Queue()
 
 def make_handler(assoc, realPortsSupplier):
     async def handler(reader, writer):
-        assert (await reader.read(5)) == b"MAGIC"
+        if (await reader.read(5)) != b"MAGIC":
+            writer.close()
+            return
         key = await reader.read(6)
         portPair = await realPortsSupplier.get(key)
         realPort = portPair.electrumReverseHTTPPort
         read, toWrite = assoc[realPort].readQueue, assoc[realPort].writeQueue
 
-        req = await toWrite.get()
-        writer.write(req)
-        await writer.drain()
+        while True:
+            req = await toWrite.get()
+            writer.write(req)
+            try:
+                await writer.drain()
+            except:
+                await toWrite.put(req)
+                print("error while draining")
+                print("put back on queue, queue now", toWrite.qsize())
+                return
 
-        data = b""
+            data = b""
 
-        with async_timeout.timeout(3):
-          while not reader.at_eof():
-              try:
-                  data += await reader.read()
-              except ConnectionResetError:
-                  print("connection reset")
-                  break
-              except concurrent.futures.CancelledError:
-                  print("cancelled. timeout?")
-                  break
-        try:
-            json.loads(data.split(b"\n")[-1].decode("ascii"))
-        except ValueError:
-            await toWrite.put(req)
-            print("incomplete data: " + repr(data))
-            print("put back on queue, queue now", toWrite.qsize())
-        else:
-            await read.put(data)
-            writer.close()
-            print("put response")
+            answered = False
+            while not reader.at_eof():
+                try:
+                    data += await asyncio.wait_for(reader.read(2048), 3)
+                except TimeoutError:
+                    break
+                try:
+                    json.loads(data.split(b"\n")[-1].decode("ascii"))
+                except ValueError:
+                    print("data", data)
+                    continue
+                else:
+                    print("put response", data)
+                    await read.put(data)
+                    answered = True
+                    break
+            if not answered:
+                await toWrite.put(req)
+                print("incomplete data received: " + repr(data))
+                print("put back on queue, queue now", toWrite.qsize())
     return handler
 
 async def queueMonitor(readQueue, writeQueue, port, killQueue):
