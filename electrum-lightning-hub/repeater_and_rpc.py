@@ -14,6 +14,7 @@ from h2.exceptions import ProtocolError
 from lib.ln import rpc_pb2_grpc, rpc_pb2
 from google.protobuf import json_format
 
+import time
 import json
 import io
 import binascii
@@ -238,7 +239,7 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simn
       logdir=tempfile.TemporaryDirectory(prefix="lnd_logdir")
       kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
       bitcoinrpcport = 18556 if simnet else 18334 # TODO does not support mainnet
-      cmd = "/home/janus/go/bin/lnd --configfile=/dev/null --rpcport=" + str(rpcport) + " --restport=" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir + " --peerport=" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
+      cmd = "/home/janus/go/bin/lnd --no-macaroons --debuglevel warn --configfile=/dev/null --rpcport=" + str(rpcport) + " --restport=" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir + " --peerport=" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
       print(cmd)
       lnd = await asyncio.create_subprocess_shell(cmd, **kwargs)
       return lnd
@@ -288,16 +289,15 @@ class Queues:
         self.writeQueue = asyncio.Queue()
         self.killQueue = asyncio.Queue()
 
-def make_chain(offset, silent, simnet, testnet, datadir):
-  coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset), '127.0.0.1', 9090+offset)
+def make_chain(offset, silent, simnet, testnet):
+  coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset), '127.0.0.1', 9090+offset//5)
   elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
-  lnd = get_lnd_server(9090+offset, peerport=9735+offset, rpcport=10009+offset, restport=8080+offset, silent=silent, simnet=simnet, testnet=testnet, datadir=datadir)
 
   assert 8432 + offset not in assoc
   assoc[8432 + offset] = Queues()
 
   queueMonitor = socksserver.queueMonitor(assoc[8432+offset].readQueue, assoc[8432+offset].writeQueue, 8432+offset, assoc[8432+offset].killQueue)
-  return [coro, elec1, lnd, queueMonitor]
+  return [coro, elec1, queueMonitor]
 
 PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'datadir'])
 
@@ -309,15 +309,13 @@ class RealPortsSupplier:
         self.simnet = simnet
     # returns keys for assoc
     async def get(self, socksKey):
-        datadir = "/tmp/lnd_datadir_" + binascii.hexlify(socksKey).decode("ascii")
-
         # socksKey is the first 6 bytes of a private key hash
         if socksKey not in self.keysToOffset:
-            asyncio.ensure_future(asyncio.gather(*make_chain(self.currentOffset, False, self.simnet, self.testnet, datadir)))
-            self.currentOffset += 5
-            chosenPort = self.currentOffset - 5
+            asyncio.ensure_future(asyncio.gather(*make_chain(self.currentOffset * 5, False, self.simnet, self.testnet)))
+            self.currentOffset += 1
+            chosenPort = self.currentOffset - 1
             self.keysToOffset[socksKey] = chosenPort
-        return PortPair(electrumReverseHTTPPort=8432 + self.keysToOffset[socksKey], lndRPCPort=10009 + self.keysToOffset[socksKey], datadir=datadir)
+        return PortPair(electrumReverseHTTPPort=8432 + (self.keysToOffset[socksKey] * 5), lndRPCPort=10009 + 1 + self.keysToOffset[socksKey] , datadir=datadir)
 
 
 loop = asyncio.get_event_loop()
@@ -334,11 +332,15 @@ else:
 
 realPortsSupplier = RealPortsSupplier(simnet, testnet)
 
+datadir = "/tmp/lnd_datadir_" + str(int(time.time()))
+
+lnd = get_lnd_server(9090, peerport=9735, rpcport=10009, restport=8080, silent=False, simnet=simnet, testnet=testnet, datadir=datadir)
+
 if simnet:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
-    server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_btcd_server(coinbaseAddress), get_bitcoind_server()))
+    server = loop.run_until_complete(asyncio.gather(lnd, create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_btcd_server(coinbaseAddress), get_bitcoind_server()))
 else:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '0.0.0.0', 1080)
-    server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv))
+    server = loop.run_until_complete(asyncio.gather(lnd, create_on_loop(loop, realPortsSupplier), srv))
 
 loop.run_forever()

@@ -7,3 +7,4 @@ config-btcwallet/simnet
 glide.lock
 vendor
 coverage.out
+electrum-lightning-hub/lib/ln
