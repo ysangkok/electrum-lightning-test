@@ -3,5 +3,5 @@ node {
 		checkout scm
 
 	stage 'Test'
-		sh 'docker build -t elh .'
+		sh 'bash test.sh'
 }

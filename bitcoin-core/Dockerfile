@@ -113,7 +113,7 @@ RUN cd boost_* && bash ./bootstrap.sh
 RUN cd boost_* && patchelf --set-interpreter $TOOLSBIN/../lib/libc.so ./b2
 RUN cd boost_* && ./b2 install || true
 
-RUN curl -Lo libressl.zip https://fossies.org/linux/misc/libressl-2.6.0.zip
+RUN curl -Lo libressl.zip https://fossies.org/linux/misc/libressl-2.6.4.zip
 RUN unzip libressl*.zip
 RUN cd libressl-* && perl -pi -e 's/^ *wait.*/true/g' configure
 RUN cd libressl-* && ./configure --disable-asm LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make -j2 && make install
