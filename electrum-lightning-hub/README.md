@@ -51,6 +51,7 @@ sudo pip3 install grpcio-tools
 
 git clone https://github.com/ysangkok/electrum-lightning-test
 cd electrum-lightning-test/electrum-lightning-hub
+mkdir -p lib/ln
 # The following script uses the Protobuf files in the lnd folder
 ./protoc_lightning.sh
 
