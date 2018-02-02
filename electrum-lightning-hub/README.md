@@ -9,7 +9,7 @@ go get -u github.com/Masterminds/glide
 
 # It is recommended that $GOPATH is set to a directory in your home directory such as ~/go to avoid write permission issues. It is also recommended to add $GOPATH/bin to your PATH at this point.
 
-mkdir -p 
+mkdir -p  $GOPATH/src/github.com/roasbeef
 git clone https://github.com/Roasbeef/btcd.git $GOPATH/src/github.com/roasbeef/btcd 
 cd $GOPATH/src/github.com/roasbeef/btcd
 glide install
