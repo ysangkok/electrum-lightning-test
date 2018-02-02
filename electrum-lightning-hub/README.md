@@ -34,7 +34,7 @@ screen btcd
 
 # Detach using Control-A Control-D
 
-cd $GOPATH/src/github
+cd $GOPATH/src/github.com
 mkdir lightningnetwork
 cd lightningnetwork
 git clone https://github.com/ysangkok/lnd
