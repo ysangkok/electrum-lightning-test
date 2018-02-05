@@ -3,7 +3,9 @@ cd electrum-lightning-hub
 PYTHONPATH=../electrum/lib/ln screen -S lightning-hub -d -m python3.6 repeater_and_rpc.py
 screen -ls
 sleep 10
+git clone https://github.com/spesmilo/electrum.git ../electrum
 cd ../electrum
+git checkout lightning
 rm -rf ~/.electrum/testnet
 PYTHONPATH=lib/ln ../create.expect
 PYTHONPATH=lib/ln python3.6 ./electrum --testnet daemon start
