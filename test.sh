@@ -13,7 +13,11 @@ fi
 if [ ! -d ../venv ]; then
 	python3.6 -m venv ../venv
 fi
-../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
+if [ -f contrib/deterministic-build/requirements.txt ]; then
+  ../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
+else
+  ../venv/bin/pip install -r contrib/requirements.txt
+fi
 rm -rf ~/.electrum/testnet
 PYTHONPATH=lib/ln ../create.expect
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start
