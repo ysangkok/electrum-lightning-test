@@ -3,5 +3,5 @@ node {
 		checkout scm
 
 	stage 'Test'
-		sh 'bash test.sh'
+		sh './test.sh'
 }
