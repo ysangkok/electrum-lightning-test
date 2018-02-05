@@ -16,11 +16,11 @@ fi
 ../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
 rm -rf ~/.electrum/testnet
 PYTHONPATH=lib/ln ../create.expect
-PYTHONPATH=lib/ln ../venv/bin/pip/python ./electrum --testnet daemon start
-PYTHONPATH=lib/ln ../venv/bin/pip/python ./electrum --testnet daemon load_wallet
+PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start
+PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet
 sleep 5
-while true; do
-  OUT="$(PYTHONPATH=lib/ln ../venv/bin/pip/python ./electrum --testnet lightning getinfo)"
+for i in $(seq 0 100); do
+  OUT="$(PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet lightning getinfo)"
   CODE="$(echo $OUT | jq .returncode)"
   if [[ $CODE == "null" ]]; then
     # returncode is only there on error (see lncli_endpoint.py)
@@ -29,5 +29,5 @@ while true; do
   fi
   echo "$OUT"
 done
-PYTHONPATH=lib/ln ../venv/bin/pip/python ./electrum --testnet daemon stop
+PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop
 screen -X -S lightning-hub quit
