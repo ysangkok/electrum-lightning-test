@@ -1,5 +1,5 @@
 #!/usr/bin/expect -f
-spawn python3.6 ./electrum --testnet create --segwit
+spawn ../venv/bin/python ./electrum --testnet create --segwit
 expect "Password (hit return if you do not wish to encrypt your wallet):"
 send "\r"
 expect eof
