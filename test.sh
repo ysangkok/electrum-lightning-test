@@ -22,6 +22,7 @@ if [ -f contrib/deterministic-build/requirements.txt ]; then
 else
   ../venv/bin/pip install -r contrib/requirements.txt
 fi
+(cd ~/go/src/github.com/lightningnetwork/lnd && git pull)
 ./protoc_lightning.sh
 rm -rf ~/.electrum/testnet
 ../create.expect
