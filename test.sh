@@ -22,6 +22,7 @@ if [ -f contrib/deterministic-build/requirements.txt ]; then
 else
   ../venv/bin/pip install -r contrib/requirements.txt
 fi
+./protoc_lightning.sh
 rm -rf ~/.electrum/testnet
 ../create.expect
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start
