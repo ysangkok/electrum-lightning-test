@@ -23,7 +23,7 @@ else
   ../venv/bin/pip install -r contrib/requirements.txt
 fi
 rm -rf ~/.electrum/testnet
-PYTHONPATH=lib/ln ../create.expect
+../create.expect
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet
 sleep 5
