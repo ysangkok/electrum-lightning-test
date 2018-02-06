@@ -10,6 +10,10 @@ if [ ! -d ../electrum ]; then
 else
 	cd ../electrum
 fi
+git reset --hard
+git clean -d -x -f
+git checkout lightning
+git pull
 if [ ! -d ../venv ]; then
 	python3.6 -m venv ../venv
 fi
