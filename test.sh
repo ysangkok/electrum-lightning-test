@@ -1,6 +1,10 @@
 #!/bin/bash -xe
 cd electrum-lightning-hub
-PYTHONPATH=../electrum/lib/ln screen -S lightning-hub -d -m python3.6 repeater_and_rpc.py
+if [ ! -d ../venv ]; then
+	python3.6 -m venv ../venv
+fi
+../venv/bin/pip install -r requirements.txt
+PYTHONPATH=../electrum/lib/ln screen -S lightning-hub -d -m ../venv/bin/python repeater_and_rpc.py
 screen -ls
 sleep 10
 if [ ! -d ../electrum ]; then
@@ -14,9 +18,6 @@ git reset --hard
 git clean -d -x -f
 git checkout lightning
 git pull
-if [ ! -d ../venv ]; then
-	python3.6 -m venv ../venv
-fi
 if [ -f contrib/deterministic-build/requirements.txt ]; then
   ../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
 else
