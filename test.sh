@@ -28,6 +28,7 @@ fi
 (cd ~/go/src/github.com/lightningnetwork/lnd && ./protoc_electrum.sh)
 (cd ~/go/src/github.com/lightningnetwork/lnd && go get -u github.com/Masterminds/glide && ~/go/bin/glide install && go install . ./cmd/...)
 rm -rf ~/.electrum/testnet
+./protoc_lightning.sh
 ../create.expect
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet
