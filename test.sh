@@ -25,8 +25,8 @@ else
   ../venv/bin/pip install -r contrib/requirements.txt
 fi
 (cd ~/go/src/github.com/lightningnetwork/lnd && git pull)
-(cd ~/go/src/github.com/lightningnetwork/lnd && go get -u github.com/Masterminds/glide && ~/go/bin/glide install && go install . ./cmd/...)
 ./protoc_lightning.sh
+(cd ~/go/src/github.com/lightningnetwork/lnd && go get -u github.com/Masterminds/glide && ~/go/bin/glide install && go install . ./cmd/...)
 rm -rf ~/.electrum/testnet
 ../create.expect
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start
