@@ -5,7 +5,7 @@ if [ ! -d ../venv ]; then
 fi
 ../venv/bin/pip install -r requirements.txt
 ./protoc_lightning.sh
-PYTHONPATH=lib/ln screen -S lightning-hub -d -m ../venv/bin/python repeater_and_rpc.py
+screen -S lightning-hub -d -m env PYTHONPATH=lib/ln ../venv/bin/python repeater_and_rpc.py
 screen -ls
 sleep 10
 if [ ! -d ../electrum ]; then
