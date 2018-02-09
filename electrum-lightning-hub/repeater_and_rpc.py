@@ -139,7 +139,9 @@ class H2Protocol(asyncio.Protocol):
           jso = json_format.MessageToJson(a)
           if len(json.loads(jso).keys()) == 0 and methodname == "FetchInputInfo":
             raise Exception("no keys" + repr(a) + " " + repr(body))
+          print("Calling", methodname)
           res = getattr(self.elec, methodname)(jso)
+          print("Call returned")
           def done(fut):
             try:
               fut.exception()
