@@ -30,23 +30,30 @@ fi
 rm -rf ~/.electrum/testnet
 ./protoc_lightning.sh
 ELECDIR1=$(mktemp)
-rm $ELECDIR1
-ELECDIR=$ELECDIR1 ../create.expect
-PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR1
-PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet -D $ELECDIR1
+ELECDIR2=$(mktemp)
+for ELECDIR in $ELECDIR1 $ELECDIR2; do
+  rm $ELECDIR
+  ELECDIR=$ELECDIR ../create.expect
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet -D $ELECDIR
+done
 sleep 5
 set +x
-for i in $(seq 0 100); do
-  OUT="$(PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet lightning getinfo -D $ELECDIR1)"
-  CODE="$(echo $OUT | jq .returncode)"
-  if [[ $CODE == "null" ]]; then
-    # returncode is only there on error (see lncli_endpoint.py)
+for ELECDIR in $ELECDIR1 $ELECDIR2; do
+  for i in $(seq 0 100); do
+    OUT="$(PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet lightning getinfo -D $ELECDIR)"
+    CODE="$(echo $OUT | jq .returncode)"
+    if [[ $CODE == "null" ]]; then
+      # returncode is only there on error (see lncli_endpoint.py)
+      echo "$OUT"
+      break
+    fi
     echo "$OUT"
-    break
-  fi
-  echo "$OUT"
-	sleep 1
+  	sleep 1
+  done
 done
 set -x
-PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop -D $ELECDIR1
+for ELECDIR in $ELECDIR1 $ELECDIR2; do
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop -D $ELECDIR
+done
 screen -X -S lightning-hub quit
