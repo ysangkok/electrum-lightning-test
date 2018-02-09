@@ -35,6 +35,7 @@ ELECDIR=$ELECDIR1 ../create.expect
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR1
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet -D $ELECDIR1
 sleep 5
+set +x
 for i in $(seq 0 100); do
   OUT="$(PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet lightning getinfo -D $ELECDIR1)"
   CODE="$(echo $OUT | jq .returncode)"
@@ -44,6 +45,8 @@ for i in $(seq 0 100); do
     break
   fi
   echo "$OUT"
+	sleep 1
 done
+set -x
 PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop -D $ELECDIR1
 screen -X -S lightning-hub quit
