@@ -246,6 +246,7 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simn
 
 def mkhandler(port):
   q = asyncio.Queue()
+  lock = asyncio.Lock()
   async def all_handler(request):
       content = await request.content.read()
       strcontent = content.decode("ascii") # python 3.5 and lower do not accept bytes in json.loads
@@ -270,12 +271,19 @@ def mkhandler(port):
               except:
                   await asyncio.sleep(0.1)
           await q.put(json.dumps(parsedresponse).encode("utf-8"))
-      server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
-      resp = await q.get()
-      print("waiting for closed with resp", resp)
-      server.close()
-      await server.wait_closed()
-      return web.Response(body=resp, content_type="application/json")
+      async with lock:
+        server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
+        try:
+          resp = await asyncio.wait_for(q.get(), 5)
+        except asyncio.TimeoutError: 
+          raise web.HTTPGatewayTimeout()
+        else:
+          return web.Response(body=resp, content_type="application/json")
+        finally:
+          print("waiting for closed with resp", resp)
+          server.close()
+          await server.wait_closed()
+
   app = web.Application()
   app.router.add_route("*", "", all_handler)
   return app.make_handler()
