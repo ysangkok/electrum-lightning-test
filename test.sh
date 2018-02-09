@@ -29,12 +29,14 @@ fi
 (cd ~/go/src/github.com/lightningnetwork/lnd && go get -u github.com/Masterminds/glide && ~/go/bin/glide install && go install . ./cmd/...)
 rm -rf ~/.electrum/testnet
 ./protoc_lightning.sh
-../create.expect
-PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start
-PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet
+ELECDIR1=$(mktemp)
+rm $ELECDIR1
+ELECDIR=$ELECDIR1 ../create.expect
+PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR1
+PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet -D $ELECDIR1
 sleep 5
 for i in $(seq 0 100); do
-  OUT="$(PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet lightning getinfo)"
+  OUT="$(PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet lightning getinfo -D $ELECDIR1)"
   CODE="$(echo $OUT | jq .returncode)"
   if [[ $CODE == "null" ]]; then
     # returncode is only there on error (see lncli_endpoint.py)
@@ -43,5 +45,5 @@ for i in $(seq 0 100); do
   fi
   echo "$OUT"
 done
-PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop
+PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop -D $ELECDIR1
 screen -X -S lightning-hub quit
