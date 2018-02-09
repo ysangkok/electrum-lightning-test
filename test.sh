@@ -49,10 +49,29 @@ for ELECDIR in $ELECDIR1 $ELECDIR2; do
       break
     fi
     echo "$OUT"
-  	sleep 1
+  	sleep 2
   done
 done
 set -x
+
+NODE1PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR1 | jq -r .identity_pubkey)
+NODE2PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR2 | jq -r .identity_pubkey)
+PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning connect -D $ELECDIR2 $NODE1PUBK@127.0.0.1
+
+NODE1ADDR=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning newaddress np2wkh -D $ELECDIR1 | jq -r .address)
+cd ../upstreamelectrum
+../venv/bin/python electrum --testnet daemon start
+sleep 3
+../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum broadcast
+../venv/bin/python electrum --testnet daemon stop
+
+sleep 600
+
+PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning openchannel $NODE2PUBK 10000 -D $ELECDIR1
+PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
+sleep 600
+PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
+
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop -D $ELECDIR
 done
