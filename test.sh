@@ -42,7 +42,7 @@ set +x
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   for i in $(seq 0 100); do
     OUT="$(PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet lightning getinfo -D $ELECDIR)"
-    CODE="$(echo $OUT | jq .returncode)"
+    CODE="$(echo $OUT | jq .returncode || true)"
     if [[ $CODE == "null" ]]; then
       # returncode is only there on error (see lncli_endpoint.py)
       echo "$OUT"
