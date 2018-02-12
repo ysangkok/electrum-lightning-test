@@ -274,7 +274,9 @@ def mkhandler(port):
               except:
                   await asyncio.sleep(0.1)
           await q.put(json.dumps(parsedresponse).encode("utf-8"))
-      async with locks[port].acquire():
+      print("waiting for server lock {}".format(port))
+      async with locks[port]:
+        print("got server lock {}".format(port))
         server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
         try:
           resp = await asyncio.wait_for(q.get(), 5)
