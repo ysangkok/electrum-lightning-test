@@ -246,9 +246,10 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simn
       lnd = await asyncio.create_subprocess_shell(cmd, **kwargs)
       return lnd
 
+locks = collections.defaultdict(asyncio.Lock)
+
 def mkhandler(port):
   q = asyncio.Queue()
-  lock = asyncio.Lock()
   async def all_handler(request):
       content = await request.content.read()
       strcontent = content.decode("ascii") # python 3.5 and lower do not accept bytes in json.loads
@@ -273,7 +274,7 @@ def mkhandler(port):
               except:
                   await asyncio.sleep(0.1)
           await q.put(json.dumps(parsedresponse).encode("utf-8"))
-      async with lock:
+      async with locks[port].acquire():
         server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
         try:
           resp = await asyncio.wait_for(q.get(), 5)
