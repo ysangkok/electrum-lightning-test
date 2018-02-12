@@ -44,7 +44,7 @@ class H2Protocol(asyncio.Protocol):
         self.killQueuePort = killQueuePort
 
     def connection_made(self, transport: asyncio.Transport):
-        print("conn made")
+        print("conn made {}".format(self.killQueuePort))
         self.transport = transport
         self.conn.initiate_connection()
         self.transport.write(self.conn.data_to_send())
@@ -70,7 +70,7 @@ class H2Protocol(asyncio.Protocol):
                 self.transport.write(self.conn.data_to_send())
 
     def request_received(self, headers: List[Tuple[str, str]], stream_id: int):
-        print("req recv'd")
+        print("req recv'd".format(self.killQueuePort))
         headers = collections.OrderedDict(headers)
         method = headers[':method']
 

@@ -19,6 +19,7 @@ def make_handler(assoc, realPortsSupplier):
         key = await reader.read(6)
         portPair = await realPortsSupplier.get(key)
         realPort = portPair.electrumReverseHTTPPort
+        print("socksserver using realport = {}".format(realPort))
         read, toWrite = assoc[realPort].readQueue, assoc[realPort].writeQueue
 
         while True:
