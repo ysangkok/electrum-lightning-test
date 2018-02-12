@@ -44,6 +44,7 @@ class H2Protocol(asyncio.Protocol):
         self.killQueuePort = killQueuePort
 
     def connection_made(self, transport: asyncio.Transport):
+        print("conn made")
         self.transport = transport
         self.conn.initiate_connection()
         self.transport.write(self.conn.data_to_send())
@@ -69,6 +70,7 @@ class H2Protocol(asyncio.Protocol):
                 self.transport.write(self.conn.data_to_send())
 
     def request_received(self, headers: List[Tuple[str, str]], stream_id: int):
+        print("req recv'd")
         headers = collections.OrderedDict(headers)
         method = headers[':method']
 
@@ -110,6 +112,7 @@ class H2Protocol(asyncio.Protocol):
       try:
           request_data = self.stream_data[stream_id]
       except KeyError:
+          print("probably already 405")
           # Just return, we probably 405'd this already
           return
 
@@ -350,7 +353,7 @@ realPortsSupplier = RealPortsSupplier(simnet, testnet)
 
 datadir = "/tmp/lnd_datadir_" + str(int(time.time()))
 
-lnd = get_lnd_server(9090, peerport=9735, rpcport=10009, restport=8080, silent=True, simnet=simnet, testnet=testnet, datadir=datadir)
+lnd = get_lnd_server(9090, peerport=9735, rpcport=10009, restport=8080, silent=False, simnet=simnet, testnet=testnet, datadir=datadir)
 
 if simnet:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
