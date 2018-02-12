@@ -282,18 +282,17 @@ def mkhandler(port):
         print("got server lock {}".format(port))
         server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
         resp = None
-        try:
-          resp = await asyncio.wait_for(q.get(), 5)
-          assert resp, "Got None from queue!"
-        except asyncio.TimeoutError: 
-          print("{} was not connected to!".format(port))
-          raise web.HTTPGatewayTimeout()
-        else:
-          return web.Response(body=resp, content_type="application/json")
-        finally:
-          print("waiting for closed with resp", resp)
-          server.close()
-          await server.wait_closed()
+        while resp is None:
+          try:
+            resp = await asyncio.wait_for(q.get(), 5)
+            assert resp, "Got None from queue!"
+          except asyncio.TimeoutError: 
+            print("{} was not connected to!".format(port))
+          else:
+            print("waiting for closed with resp", resp)
+            server.close()
+            await server.wait_closed()
+            return web.Response(body=resp, content_type="application/json")
 
   app = web.Application()
   app.router.add_route("*", "", all_handler)
@@ -309,6 +308,7 @@ class Queues:
         self.killQueue = asyncio.Queue()
 
 def make_chain(offset, silent, simnet, testnet):
+  print("starting chain on " + str(9090 + offset//5))
   coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset), '127.0.0.1', 9090+offset//5)
   elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
 
