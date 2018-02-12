@@ -18,7 +18,7 @@ fi
 git reset --hard
 git clean -d -x -f
 git checkout lightning
-git pull
+git pull origin lightning
 if [ -f contrib/deterministic-build/requirements.txt ]; then
   ../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
 else
