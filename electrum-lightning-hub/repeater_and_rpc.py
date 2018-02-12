@@ -278,6 +278,7 @@ def mkhandler(port):
       async with locks[port]:
         print("got server lock {}".format(port))
         server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
+        resp = None
         try:
           resp = await asyncio.wait_for(q.get(), 5)
         except asyncio.TimeoutError: 
