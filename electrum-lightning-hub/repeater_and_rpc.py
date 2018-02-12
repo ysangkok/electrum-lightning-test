@@ -281,7 +281,9 @@ def mkhandler(port):
         resp = None
         try:
           resp = await asyncio.wait_for(q.get(), 5)
+          assert resp, "Got None from queue!"
         except asyncio.TimeoutError: 
+          print("{} was not connected to!".format(port))
           raise web.HTTPGatewayTimeout()
         else:
           return web.Response(body=resp, content_type="application/json")
