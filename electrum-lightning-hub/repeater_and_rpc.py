@@ -353,7 +353,7 @@ realPortsSupplier = RealPortsSupplier(simnet, testnet)
 
 datadir = "/tmp/lnd_datadir_" + str(int(time.time()))
 
-lnd = get_lnd_server(9090, peerport=9735, rpcport=10009, restport=8080, silent=False, simnet=simnet, testnet=testnet, datadir=datadir)
+lnd = get_lnd_server(9090, peerport=9735, rpcport=10009, restport=8080, silent=True, simnet=simnet, testnet=testnet, datadir=datadir)
 
 if simnet:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
