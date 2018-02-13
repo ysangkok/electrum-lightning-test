@@ -59,6 +59,10 @@ NODE2PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning ge
 echo "["\""$NODE1PUBK@127.0.0.1"\""]" | ../venv/bin/python electrum --testnet lightning connect -D $ELECDIR2 --lightningargs -
 
 NODE1ADDR=$(echo "["\""p2wkh"\""]" | ../venv/bin/python electrum --testnet lightning newaddress -D $ELECDIR1 --lightningargs - | jq -r .address)
+if [[ $NODE1ADDR == "null" ]]; then
+	echo "test.sh: Could not get address"
+	exit 1
+fi
 cd ../upstreamelectrum
 ../venv/bin/python electrum --testnet daemon start
 sleep 3
