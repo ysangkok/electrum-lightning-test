@@ -62,7 +62,7 @@ NODE1ADDR=$(echo "["\""np2wkh"\""]" | ../venv/bin/python electrum --testnet ligh
 cd ../upstreamelectrum
 ../venv/bin/python electrum --testnet daemon start
 sleep 3
-../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum broadcast
+../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum broadcast -
 ../venv/bin/python electrum --testnet daemon stop
 
 sleep 600
