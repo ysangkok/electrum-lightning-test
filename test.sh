@@ -58,10 +58,11 @@ NODE1PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning ge
 NODE2PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR2 | jq -r .identity_pubkey)
 echo "["\""$NODE1PUBK@127.0.0.1"\""]" | ../venv/bin/python electrum --testnet lightning connect -D $ELECDIR2 --lightningargs -
 
-NODE1ADDR=$(echo "["\""np2wkh"\""]" | ../venv/bin/python electrum --testnet lightning newaddress -D $ELECDIR1 --lightningargs - | jq -r .address)
+NODE1ADDR=$(echo "["\""p2wkh"\""]" | ../venv/bin/python electrum --testnet lightning newaddress -D $ELECDIR1 --lightningargs - | jq -r .address)
 cd ../upstreamelectrum
 ../venv/bin/python electrum --testnet daemon start
 sleep 3
+../venv/bin/python electrum --testnet daemon load_wallet
 ../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum broadcast -
 ../venv/bin/python electrum --testnet daemon stop
 
