@@ -56,9 +56,9 @@ set -x
 
 NODE1PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR1 | jq -r .identity_pubkey)
 NODE2PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR2 | jq -r .identity_pubkey)
-PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning connect -D $ELECDIR2 $NODE1PUBK@127.0.0.1
+echo "["\""$NODE1PUBK@127.0.0.1"\""]" | ../venv/bin/python electrum --testnet lightning connect -D $ELECDIR2 -
 
-NODE1ADDR=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning newaddress np2wkh -D $ELECDIR1 | jq -r .address)
+NODE1ADDR=$(echo "["\""np2wkh"\""]" | ../venv/bin/python electrum --testnet lightning newaddress -D $ELECDIR1 - | jq -r .address)
 cd ../upstreamelectrum
 ../venv/bin/python electrum --testnet daemon start
 sleep 3
@@ -67,7 +67,7 @@ sleep 3
 
 sleep 600
 
-PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning openchannel $NODE2PUBK 10000 -D $ELECDIR1
+echo $NODE2PUBK 10000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 -
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
 sleep 600
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
