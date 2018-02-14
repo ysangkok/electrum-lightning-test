@@ -244,7 +244,7 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simn
       logdir=tempfile.TemporaryDirectory(prefix="lnd_logdir")
       kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
       bitcoinrpcport = 18556 if simnet else 18334 # TODO does not support mainnet
-      cmd = "/home/janus/go/bin/lnd --no-macaroons --debuglevel warn --configfile=/dev/null --rpcport=" + str(rpcport) + " --restport=" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir + " --peerport=" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
+      cmd = "~/go/bin/lnd --no-macaroons --debuglevel warn --configfile=/dev/null --rpcport=" + str(rpcport) + " --restport=" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir + " --peerport=" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --bitcoin.rpcuser=youruser --bitcoin.rpcpass=SomeDecentp4ssw0rd --bitcoin.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
       print(cmd)
       lnd = await asyncio.create_subprocess_shell(cmd, **kwargs)
       return lnd
