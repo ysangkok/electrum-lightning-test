@@ -4,6 +4,20 @@ if [ ! -d ../venv ]; then
 	python3.6 -m venv ../venv
 fi
 ../venv/bin/pip install -r requirements.txt
+if [ ! -d ~/go/src/github.com/lightningnetwork/lnd ]; then
+	mkdir -p ~/go/src/github.com/lightningnetwork
+	cd ~/go/src/github.com/lightningnetwork
+	git clone https://github.com/ysangkok/lnd
+	cd -
+fi
+if [ ! -f ~/go/bin/protoc ]; then
+	mkdir -p ~/go || true
+	cd ~/go
+	wget https://github.com/google/protobuf/releases/download/v3.5.1/protoc-3.5.1-linux-x86_64.zip
+	unzip protoc*
+	mv include ..
+	cd -
+fi
 ./protoc_lightning.sh
 screen -S lightning-hub -d -m env PYTHONPATH=lib/ln ../venv/bin/python repeater_and_rpc.py
 screen -ls
