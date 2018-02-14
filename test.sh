@@ -64,9 +64,12 @@ if [[ $NODE1ADDR == "null" ]]; then
 fi
 cd ../upstreamelectrum
 ../venv/bin/python electrum --testnet daemon start
-sleep 3
 ../venv/bin/python electrum --testnet daemon load_wallet
+while [[ $(../venv/bin/python electrum --testnet is_synchronized) != "true" ]]; do
+  sleep 1
+done
 ../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum --testnet broadcast -
+sleep 1
 ../venv/bin/python electrum --testnet daemon stop
 
 sleep 600
