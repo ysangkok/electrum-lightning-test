@@ -53,7 +53,7 @@ done
 sleep 5
 set +x
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
-  for i in $(seq 0 100); do
+  while true; do
     OUT="$(PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet lightning getinfo -D $ELECDIR)"
     CODE="$(echo $OUT | jq .returncode || true)"
     if [[ $CODE == "null" ]]; then
