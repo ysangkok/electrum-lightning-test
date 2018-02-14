@@ -27,7 +27,6 @@ fi
 (cd ~/go/src/github.com/lightningnetwork/lnd && git fetch --all && git reset --hard origin/electrum && git checkout -f origin/electrum)
 (cd ~/go/src/github.com/lightningnetwork/lnd && ./protoc_electrum.sh)
 (cd ~/go/src/github.com/lightningnetwork/lnd && go get -u github.com/Masterminds/glide && ~/go/bin/glide install && go install . ./cmd/...)
-rm -rf ~/.electrum/testnet
 ./protoc_lightning.sh
 ELECDIR1=$(mktemp)
 ELECDIR2=$(mktemp)
@@ -67,7 +66,7 @@ cd ../upstreamelectrum
 ../venv/bin/python electrum --testnet daemon start
 sleep 3
 ../venv/bin/python electrum --testnet daemon load_wallet
-../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum broadcast -
+../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum --testnet broadcast -
 ../venv/bin/python electrum --testnet daemon stop
 
 sleep 600
