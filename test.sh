@@ -76,7 +76,11 @@ if [[ $NODE1ADDR == "null" ]]; then
 	echo "test.sh: Could not get address"
 	exit 1
 fi
+if [ ! -d ../upstreamelectrum ]; then
+	git clone https://github.com/spesmilo/electrum ../upstreamelectrum
+fi
 cd ../upstreamelectrum
+git pull
 ../venv/bin/python electrum --testnet daemon start
 ../venv/bin/python electrum --testnet daemon load_wallet
 while [[ $(../venv/bin/python electrum --testnet is_synchronized) != "true" ]]; do
