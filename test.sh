@@ -93,6 +93,7 @@ done
 ../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum --testnet broadcast -
 sleep 1
 ../venv/bin/python electrum --testnet daemon stop
+cd -
 
 sleep 600
 
