@@ -244,7 +244,7 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simn
       logdir=tempfile.TemporaryDirectory(prefix="lnd_logdir")
       kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
       bitcoinrpcport = 18556 if simnet else 18334 # TODO does not support mainnet
-      cmd = "~/go/bin/lnd --no-macaroons --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --bitcoind.rpcuser=youruser --bitcoind.rpcpass=SomeDecentp4ssw0rd --bitcoind.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
+      cmd = "~/go/bin/lnd --no-macaroons --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --btcd.rpcuser=youruser --btcd.rpcpass=SomeDecentp4ssw0rd --btcd.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
       print(cmd)
       lnd = await asyncio.create_subprocess_shell(cmd, **kwargs)
       return lnd
@@ -316,7 +316,7 @@ def make_chain(offset, silent, simnet, testnet, datadir):
   assoc[8432 + offset] = Queues()
 
   queueMonitor = socksserver.queueMonitor(assoc[8432+offset].readQueue, assoc[8432+offset].writeQueue, 8432+offset, assoc[8432+offset].killQueue)
-  lnd = get_lnd_server(9090+offset//5, peerport=9735+offset//5, rpcport=10009+offset//5, restport=8080+offset//5, silent=silent, simnet=simnet, testnet=testnet, datadir=datadir)
+  lnd = get_lnd_server(9090+offset//5, peerport=9735+offset//5, rpcport=10009+offset//5, restport=8081+offset//5, silent=silent, simnet=simnet, testnet=testnet, datadir=datadir)
   return [lnd, coro, elec1, queueMonitor]
 
 PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'datadir'])
