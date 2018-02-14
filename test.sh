@@ -81,6 +81,9 @@ if [ ! -d ../upstreamelectrum ]; then
 fi
 cd ../upstreamelectrum
 git pull
+if [ -f contrib/deterministic-build/requirements.txt ]; then
+  ../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
+fi
 ../venv/bin/python electrum --testnet daemon start
 ../venv/bin/python electrum --testnet daemon load_wallet
 while [[ $(../venv/bin/python electrum --testnet is_synchronized) != "true" ]]; do
