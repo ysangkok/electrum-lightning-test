@@ -48,6 +48,7 @@ for ELECDIR in $ELECDIR1 $ELECDIR2; do
   rm $ELECDIR
   ELECDIR=$ELECDIR ../create.expect
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -v -D $ELECDIR 
+	sleep 1
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet -D $ELECDIR
 done
 sleep 5
@@ -85,6 +86,7 @@ if [ -f contrib/deterministic-build/requirements.txt ]; then
   ../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
 fi
 ../venv/bin/python electrum --testnet daemon start
+sleep 1
 ../venv/bin/python electrum --testnet daemon load_wallet
 while [[ $(../venv/bin/python electrum --testnet is_synchronized) != "true" ]]; do
   sleep 1
