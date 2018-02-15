@@ -25,7 +25,7 @@ def make_app(realPortsSupplier):
         proc = await asyncio.create_subprocess_shell(cmd=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         response = {}
         try:
-          await asyncio.wait_for(proc.wait(), 15)
+          await asyncio.wait_for(proc.wait(), 300)
         except asyncio.TimeoutError:
           response = {"result": "timeout in lncli_endpoint"}
         else:  
