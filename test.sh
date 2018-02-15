@@ -62,8 +62,8 @@ for ELECDIR in $ELECDIR1 $ELECDIR2; do
       echo "$OUT"
       break
     fi
-    echo "$OUT"
-  	sleep 2
+    echo "$OUT" | jq .stderr
+    sleep 10
   done
 done
 set -x
