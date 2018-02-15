@@ -109,5 +109,6 @@ for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop -D $ELECDIR
 done
 screen -X -S lightning-hub quit
+cd ..
 ls screenlog.*
 cat screenlog.*
