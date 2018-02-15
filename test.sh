@@ -19,7 +19,8 @@ if [ ! -f ~/go/bin/protoc ]; then
 	cd -
 fi
 ./protoc_lightning.sh
-screen -S lightning-hub -d -m env PYTHONPATH=lib/ln ../venv/bin/python repeater_and_rpc.py
+rm -vf screenlog.*
+screen -L -S lightning-hub -d -m env PYTHONPATH=lib/ln ../venv/bin/python repeater_and_rpc.py
 screen -ls
 sleep 10
 if [ ! -d ../electrum ]; then
@@ -47,7 +48,7 @@ ELECDIR2=$(mktemp)
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   rm $ELECDIR
   ELECDIR=$ELECDIR ../create.expect
-  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -v -D $ELECDIR 
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR 
 	sleep 1
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet -D $ELECDIR
 done
@@ -108,3 +109,5 @@ for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop -D $ELECDIR
 done
 screen -X -S lightning-hub quit
+ls screenlog.*
+cat screenlog.*
