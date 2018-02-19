@@ -71,7 +71,18 @@ set -x
 
 NODE1PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR1 | jq -r .identity_pubkey)
 NODE2PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR2 | jq -r .identity_pubkey)
-echo "["\""$NODE1PUBK@127.0.0.1"\""]" | ../venv/bin/python electrum --testnet lightning connect -D $ELECDIR2 --lightningargs -
+while true; do
+	ARGS=$(echo "["\""$NODE1PUBK@127.0.0.1"\""]")
+  OUT="$(echo $ARGS | ../venv/bin/python electrum --testnet lightning connect -D $ELECDIR2 --lightningargs -)"
+  CODE="$(echo $OUT | jq .returncode || true)"
+  if [[ $CODE == "null" ]]; then
+    # returncode is only there on error (see lncli_endpoint.py)
+    echo "$OUT"
+    break
+  fi
+  echo "$OUT" | jq .stderr
+  sleep 10
+done
 
 NODE1ADDR=$(echo "["\""p2wkh"\""]" | ../venv/bin/python electrum --testnet lightning newaddress -D $ELECDIR1 --lightningargs - | jq -r .address)
 if [[ $NODE1ADDR == "null" ]]; then
@@ -100,6 +111,8 @@ cd -
 
 sleep 600
 
+# from json to sh:
+# for i in $(./electrum --testnet listaddresses | jq -r '@sh "echo \(.)"' | sh); do echo $i; done
 echo $NODE2PUBK 10000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
 screen -X -S lightning-hub quit
