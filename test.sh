@@ -102,7 +102,14 @@ sleep 600
 
 echo $NODE2PUBK 10000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
+screen -X -S lightning-hub quit
 sleep 600
+ps aux | grep lnd
+(
+  cd ../electrum-lightning-hub
+  screen -L -S lightning-hub -d -m env PYTHONPATH=lib/ln ../venv/bin/python repeater_and_rpc.py
+  sleep 5
+)
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
 
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
