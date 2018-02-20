@@ -48,7 +48,7 @@ ELECDIR2=$(mktemp)
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   rm $ELECDIR
   ELECDIR=$ELECDIR ../create.expect
-  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR 
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR -v
 	sleep 1
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet -D $ELECDIR
 done
