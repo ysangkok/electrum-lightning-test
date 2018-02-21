@@ -82,6 +82,7 @@ async def queueMonitor(readQueue, writeQueue, port, killQueue):
                         await writeQueue.put(data)
                         return
             job = asyncio.ensure_future(asyncio.gather(copyToSocks(), copyFromSocks()))
+            await killQueue.get()
             job.cancel()
 
 if __name__ == '__main__':
