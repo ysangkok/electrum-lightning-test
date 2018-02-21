@@ -44,7 +44,6 @@ class H2Protocol(asyncio.Protocol):
         self.killQueuePort = killQueuePort
 
     def connection_made(self, transport: asyncio.Transport):
-        print("conn made {}".format(self.killQueuePort))
         self.transport = transport
         self.conn.initiate_connection()
         self.transport.write(self.conn.data_to_send())
@@ -70,7 +69,6 @@ class H2Protocol(asyncio.Protocol):
                 self.transport.write(self.conn.data_to_send())
 
     def request_received(self, headers: List[Tuple[str, str]], stream_id: int):
-        print("req recv'd".format(self.killQueuePort))
         headers = collections.OrderedDict(headers)
         method = headers[':method']
 
@@ -142,9 +140,7 @@ class H2Protocol(asyncio.Protocol):
           jso = json_format.MessageToJson(a)
           if len(json.loads(jso).keys()) == 0 and methodname == "FetchInputInfo":
             raise Exception("no keys" + repr(a) + " " + repr(body))
-          print("Calling", methodname)
           res = getattr(self.elec, methodname)(jso)
-          print("Call returned")
           def done(fut):
             try:
               fut.exception()
@@ -257,13 +253,10 @@ def mkhandler(port):
       content = await request.content.read()
       strcontent = content.decode("ascii") # python 3.5 and lower do not accept bytes in json.loads
       parsedrequest = json.loads(strcontent)
-      print("received request with method", parsedrequest["method"])
 
       async def client_connected_tb(client_reader, client_writer):
-          print("trying to send request", parsedrequest["method"])
           client_writer.write(content)
           await client_writer.drain()
-          print("sent request with method", parsedrequest["method"])
 
           #client_writer.close()
 
@@ -279,7 +272,6 @@ def mkhandler(port):
           await q.put(json.dumps(parsedresponse).encode("utf-8"))
       print("waiting for server lock {}".format(port))
       async with locks[port]:
-        print("got server lock {}".format(port))
         server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
         resp = None
         while resp is None:

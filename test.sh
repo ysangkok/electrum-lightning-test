@@ -22,6 +22,7 @@ fi
 rm -vf screenlog.*
 screen -L -S lightning-hub -d -m env PYTHONPATH=lib/ln ../venv/bin/python repeater_and_rpc.py
 screen -ls
+tail -f screenlog.0 &
 sleep 10
 if [ ! -d ../electrum ]; then
   git clone https://github.com/spesmilo/electrum.git ../electrum
@@ -48,7 +49,7 @@ ELECDIR2=$(mktemp)
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   rm $ELECDIR
   ELECDIR=$ELECDIR ../create.expect
-  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR -v
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR
 	sleep 1
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet -D $ELECDIR
 done
@@ -97,7 +98,7 @@ git pull
 if [ -f contrib/deterministic-build/requirements.txt ]; then
   ../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
 fi
-../venv/bin/python electrum --testnet daemon start -v
+../venv/bin/python electrum --testnet daemon start
 sleep 1
 ../venv/bin/python electrum --testnet daemon load_wallet
 while [[ $(../venv/bin/python electrum --testnet is_synchronized) != "true" ]]; do
@@ -111,18 +112,26 @@ cd -
 
 sleep 600
 
+for ELECDIR in $ELECDIR1 $ELECDIR2; do
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon status -D $ELECDIR
+done
+
 # from json to sh:
 # for i in $(./electrum --testnet listaddresses | jq -r '@sh "echo \(.)"' | sh); do echo $i; done
-echo $NODE2PUBK 10000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
+echo $NODE2PUBK 100000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
 screen -X -S lightning-hub quit
 sleep 600
+for ELECDIR in $ELECDIR1 $ELECDIR2; do
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon status -D $ELECDIR
+done
 ps aux | grep lnd
 (
   cd ../electrum-lightning-hub
   screen -L -S lightning-hub -d -m env PYTHONPATH=lib/ln ../venv/bin/python repeater_and_rpc.py
   sleep 5
 )
+PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR1
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
 
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
@@ -130,5 +139,5 @@ for ELECDIR in $ELECDIR1 $ELECDIR2; do
 done
 screen -X -S lightning-hub quit
 cd ../electrum-lightning-hub
-ls screenlog.*
-cat screenlog.*
+kill %1
+rm screenlog.*
