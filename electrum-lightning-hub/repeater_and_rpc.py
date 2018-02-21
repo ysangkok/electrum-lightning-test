@@ -281,7 +281,6 @@ def mkhandler(port):
           except asyncio.TimeoutError: 
             print("{} was not connected to!".format(port))
           else:
-            print("waiting for closed with resp", resp)
             server.close()
             await server.wait_closed()
             return web.Response(body=resp, content_type="application/json")

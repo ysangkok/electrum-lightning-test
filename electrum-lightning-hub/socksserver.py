@@ -44,10 +44,9 @@ def make_handler(assoc, realPortsSupplier):
                 try:
                     json.loads(data.split(b"\n")[-1].decode("ascii"))
                 except ValueError:
-                    print("data", data)
+                    print("ValueError while loading: data: ", data)
                     continue
                 else:
-                    print("put response", data)
                     await read.put(data)
                     answered = True
                     break
@@ -68,7 +67,6 @@ async def queueMonitor(readQueue, writeQueue, port, killQueue):
             async def copyFromSocks():
                 while True:
                     data = await readQueue.get()
-                    print("sending", data)
                     writer.write(data)
                     await writer.drain()
                     writer.close()
@@ -84,7 +82,6 @@ async def queueMonitor(readQueue, writeQueue, port, killQueue):
                         await writeQueue.put(data)
                         return
             job = asyncio.ensure_future(asyncio.gather(copyToSocks(), copyFromSocks()))
-            print("killQueue", await killQueue.get())
             job.cancel()
 
 if __name__ == '__main__':
