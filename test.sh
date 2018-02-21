@@ -114,6 +114,7 @@ sleep 600
 
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon status -D $ELECDIR
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet getbalance -D $ELECDIR
 done
 
 # from json to sh:
