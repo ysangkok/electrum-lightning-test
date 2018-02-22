@@ -323,8 +323,15 @@ def make_chain(offset, silent, simnet, testnet, datadir):
 PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'datadir'])
 
 async def printInvoiceUpdates(invoiceSource, prefix):
-    async for invoice in invoiceSource:
-        print(datetime.now().isoformat(), prefix, invoice)
+    await asyncio.sleep(30)
+    while True:
+        try:
+            async for invoice in invoiceSource:
+                print(datetime.now().isoformat(), prefix, invoice)
+        except BaseException as e:
+            print("invoice update channel failed (because of exception of type), sleeping", str(type(e)))
+            await asyncio.sleep(5)
+            continue
 
 class RealPortsSupplier:
     def __init__(self, simnet, testnet):
