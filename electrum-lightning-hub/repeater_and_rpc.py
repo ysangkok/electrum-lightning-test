@@ -10,6 +10,7 @@ from h2.events import (
 from h2.errors import ErrorCodes
 from h2.exceptions import ProtocolError
 
+import grpc
 from aiogrpc import secure_channel
 from aiohttp import web
 
