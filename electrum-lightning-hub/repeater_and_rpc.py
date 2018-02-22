@@ -345,7 +345,7 @@ class RealPortsSupplier:
             with open(os.path.expanduser('~/.lnd/tls.cert')) as fp:
               cert = fp.read()
             creds = grpc.ssl_channel_credentials(cert)
-            channel = secure_channel('ipv4:///127.0.0.1:' + str(chosenPort + 10009))
+            channel = secure_channel('ipv4:///127.0.0.1:' + str(chosenPort + 10009), creds)
             mystub = LightningStub(channel)
             request = InvoiceSubscription()
             asyncio.ensure_future(printInvoiceUpdates(mystub.SubscribeInvoices(request), str(self.currentOffset)))
