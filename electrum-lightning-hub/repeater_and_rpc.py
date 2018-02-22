@@ -342,7 +342,7 @@ class RealPortsSupplier:
             chosenPort = self.currentOffset - 1
             self.keysToOffset[socksKey] = chosenPort
 
-            with open(os.path.expanduser('~/.lnd/tls.cert')) as fp:
+            with open(os.path.expanduser('~/.lnd/tls.cert'), "rb") as fp:
               cert = fp.read()
             creds = grpc.ssl_channel_credentials(cert)
             channel = secure_channel('ipv4:///127.0.0.1:' + str(chosenPort + 10009), creds)
