@@ -1,7 +1,6 @@
 import jsonrpc_base
 from jsonrpc_async import Server
 import asyncio
-from typing import List, Tuple
 
 from h2.config import H2Configuration
 from h2.connection import H2Connection
@@ -11,9 +10,21 @@ from h2.events import (
 from h2.errors import ErrorCodes
 from h2.exceptions import ProtocolError
 
+from aiogrpc import secure_channel
+from aiohttp import web
+
 from lib.ln import rpc_pb2_grpc, rpc_pb2
+
+import lib.ln.lnrpc.rpc_pb2 as x
+import lib.ln.lnrpc.rpc_pb2_grpc as y
+
+LightningStub = y.LightningStub
+InvoiceSubscription = x.InvoiceSubscription
+
 from google.protobuf import json_format
 
+from typing import List, Tuple
+from datetime import datetime
 import time
 import json
 import io
@@ -27,8 +38,6 @@ import sys
 from subprocess import DEVNULL
 
 import socksserver
-
-from aiohttp import web
 
 from lncli_endpoint import create_on_loop
 
@@ -312,6 +321,10 @@ def make_chain(offset, silent, simnet, testnet, datadir):
 
 PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'datadir'])
 
+async def printInvoiceUpdates(invoiceSource, prefix):
+    async for invoice in invoiceSource:
+        print(datetime.now().isoformat(), prefix, invoice)
+
 class RealPortsSupplier:
     def __init__(self, simnet, testnet):
         self.currentOffset = 0
@@ -327,6 +340,15 @@ class RealPortsSupplier:
             self.currentOffset += 1
             chosenPort = self.currentOffset - 1
             self.keysToOffset[socksKey] = chosenPort
+
+            with open(os.path.expanduser(os.path.join(datadir, 'tls.cert'))) as fp:
+              cert = fp.read()
+            creds = grpc.ssl_channel_credentials(cert)
+            channel = secure_channel('ipv4:///127.0.0.1:' + str(chosenPort + 10009))
+            mystub = LightningStub(channel)
+            request = InvoiceSubscription()
+            asyncio.ensure_future(printInvoiceUpdates(mystub.SubscribeInvoices(request), str(self.currentOffset)))
+
         return PortPair(electrumReverseHTTPPort=8432 + (self.keysToOffset[socksKey] * 5), lndRPCPort=10009 + self.keysToOffset[socksKey] , datadir=datadir)
 
 
