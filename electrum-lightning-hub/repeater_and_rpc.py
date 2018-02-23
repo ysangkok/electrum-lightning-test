@@ -16,11 +16,8 @@ from aiohttp import web
 
 from lib.ln import rpc_pb2_grpc, rpc_pb2
 
-import lib.ln.lnrpc.rpc_pb2 as x
-import lib.ln.lnrpc.rpc_pb2_grpc as y
-
-LightningStub = y.LightningStub
-InvoiceSubscription = x.InvoiceSubscription
+import lib.ln.lnrpc.rpc_pb2 as lnrpc
+import lib.ln.lnrpc.rpc_pb2_grpc as lnrpcgpc
 
 from google.protobuf import json_format
 
@@ -322,21 +319,21 @@ def make_chain(offset, silent, simnet, testnet, datadir):
 
 PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'datadir'])
 
-async def printInvoiceUpdates(connStr, creds, prefix):
+async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageClass, streamingRpcFunc):
     while True:
         try:
             channel = secure_channel(connStr, creds)
-            mystub = LightningStub(channel)
-            request = InvoiceSubscription()
-            invoiceSource = mystub.SubscribeInvoices(request)
+            mystub = lnrpcgrpc.LightningStub(channel)
+            request = getattr(lnrpc, subscriptionMessageClass)()
+            invoiceSource = getattr(mystub, streamingRpcFunc)(request)
             async for invoice in invoiceSource:
-                print(datetime.now().isoformat(), prefix, invoice)
+                print(datetime.now().isoformat(), prefix, streamingRpcFunc, invoice)
         except grpc.RpcError as rpc_error:
             try:
                 message = rpc_error.details()
             except AttributeError:
                 message = str(rpc_error)
-            print("invoice update channel failed (because of exception of type), sleeping", message)
+            print("sleeping, streaming update", prefix, streamingRpcFunc, "failed:", message)
             await asyncio.sleep(5)
             continue
 
@@ -359,7 +356,10 @@ class RealPortsSupplier:
             with open(os.path.expanduser('~/.lnd/tls.cert'), "rb") as fp:
               cert = fp.read()
             creds = grpc.ssl_channel_credentials(cert)
-            asyncio.ensure_future(printInvoiceUpdates('ipv4:///127.0.0.1:' + str(chosenPort + 10009), creds, str(self.currentOffset)))
+            endpoint = 'ipv4:///127.0.0.1:' + str(chosenPort + 10009)
+            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "InvoiceSubscription", "SubscribeInvoices"))
+            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GraphTopologySubscription", "SubscribeChannelGraph"))
+            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GetTransactionRequest", "SubscribeTransactions"))
 
         return PortPair(electrumReverseHTTPPort=8432 + (self.keysToOffset[socksKey] * 5), lndRPCPort=10009 + self.keysToOffset[socksKey] , datadir=datadir)
 
