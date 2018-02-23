@@ -322,10 +322,13 @@ def make_chain(offset, silent, simnet, testnet, datadir):
 
 PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'datadir'])
 
-async def printInvoiceUpdates(invoiceSource, prefix):
-    await asyncio.sleep(30)
+async def printInvoiceUpdates(connStr, creds, prefix):
     while True:
         try:
+            channel = secure_channel(connStr, creds)
+            mystub = LightningStub(channel)
+            request = InvoiceSubscription()
+            invoiceSource = mystub.SubscribeInvoices(request)
             async for invoice in invoiceSource:
                 print(datetime.now().isoformat(), prefix, invoice)
         except grpc.RpcError as rpc_error:
@@ -356,10 +359,7 @@ class RealPortsSupplier:
             with open(os.path.expanduser('~/.lnd/tls.cert'), "rb") as fp:
               cert = fp.read()
             creds = grpc.ssl_channel_credentials(cert)
-            channel = secure_channel('ipv4:///127.0.0.1:' + str(chosenPort + 10009), creds)
-            mystub = LightningStub(channel)
-            request = InvoiceSubscription()
-            asyncio.ensure_future(printInvoiceUpdates(mystub.SubscribeInvoices(request), str(self.currentOffset)))
+            asyncio.ensure_future(printInvoiceUpdates('ipv4:///127.0.0.1:' + str(chosenPort + 10009), creds, str(self.currentOffset)))
 
         return PortPair(electrumReverseHTTPPort=8432 + (self.keysToOffset[socksKey] * 5), lndRPCPort=10009 + self.keysToOffset[socksKey] , datadir=datadir)
 
