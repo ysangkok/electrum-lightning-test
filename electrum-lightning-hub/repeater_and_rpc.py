@@ -328,8 +328,12 @@ async def printInvoiceUpdates(invoiceSource, prefix):
         try:
             async for invoice in invoiceSource:
                 print(datetime.now().isoformat(), prefix, invoice)
-        except BaseException as e:
-            print("invoice update channel failed (because of exception of type), sleeping", str(type(e)))
+        except grpc.RpcError as rpc_error:
+            try:
+                message = rpc_error.details()
+            except AttributeError:
+                message = str(rpc_error)
+            print("invoice update channel failed (because of exception of type), sleeping", message)
             await asyncio.sleep(5)
             continue
 
