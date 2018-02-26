@@ -58,7 +58,7 @@ set +x
 
 function retryuntilnonnull {
   while true; do
-    OUT="$(echo $3 | ../venv/bin/python ./electrum --testnet lightning $1 -D $2 --lightningargs -)"
+    OUT="$(echo -- $3 | ../venv/bin/python ./electrum --testnet lightning $1 -D $2 --lightningargs -)"
     CODE="$(echo $OUT | jq .returncode || true)"
     if [[ $CODE == "null" ]]; then
       # returncode is only there on error (see lncli_endpoint.py)
