@@ -120,20 +120,36 @@ done
 # from json to sh:
 # for i in $(./electrum --testnet listaddresses | jq -r '@sh "echo \(.)"' | sh); do echo $i; done
 echo $NODE2PUBK 100000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
-PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
 #screen -X -S lightning-hub quit
-sleep 1800
-for ELECDIR in $ELECDIR1 $ELECDIR2; do
-  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon status -D $ELECDIR
-done
 #ps aux | grep lnd
 #(
 #  cd ../electrum-lightning-hub
 #  screen -L -S lightning-hub -d -m env PYTHONPATH=lib/ln ../venv/bin/python repeater_and_rpc.py
 #  sleep 5
 #)
-PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR1
+set +x
+while true; do
+  OUT="$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1)"
+  CODE="$(echo $OUT | jq ".|length" || true)"
+  if [[ $CODE == "1" ]]; then
+		echo "$OUT"
+    break
+	fi
+	sleep 60
+done
+set -x
+
+PAYREQ="$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning addinvoice --value=8192 -D $ELECDIR2 | jq .pay_req)"
+PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning sendpayment "--pay_req=$PAYREQ" -D $ELECDIR1
+
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
+PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR2
+
+for ELECDIR in $ELECDIR1 $ELECDIR2; do
+  PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon status -D $ELECDIR
+done
+
+PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR1
 
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon stop -D $ELECDIR
