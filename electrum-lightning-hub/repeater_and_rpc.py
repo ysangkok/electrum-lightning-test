@@ -17,7 +17,7 @@ from aiohttp import web
 from lib.ln import rpc_pb2_grpc, rpc_pb2
 
 import lib.ln.lnrpc.rpc_pb2 as lnrpc
-import lib.ln.lnrpc.rpc_pb2_grpc as lnrpcgpc
+import lib.ln.lnrpc.rpc_pb2_grpc as lnrpcgrpc
 
 from google.protobuf import json_format
 
