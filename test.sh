@@ -139,8 +139,8 @@ while true; do
 done
 set -x
 
-PAYREQ="$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning addinvoice --value=8192 -D $ELECDIR2 | jq .pay_req)"
-PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning sendpayment "--pay_req=$PAYREQ" -D $ELECDIR1
+PAYREQ=$(echo "["\""--value=8192"\""]" | ../venv/bin/python electrum --testnet lightning addinvoice -D $ELECDIR2 --lightningargs - | jq .pay_req)
+echo "["\""--pay_req=$PAYREQ"\""]" | ../venv/bin/python electrum --testnet lightning sendpayment -D $ELECDIR1 --lightningargs -
 
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR2
