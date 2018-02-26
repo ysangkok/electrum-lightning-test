@@ -110,7 +110,7 @@ sleep 1
 ../venv/bin/python electrum --testnet daemon stop
 cd -
 
-sleep 600
+sleep 60
 
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon status -D $ELECDIR
@@ -122,7 +122,7 @@ done
 echo $NODE2PUBK 100000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
 #screen -X -S lightning-hub quit
-sleep 1200
+sleep 1800
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon status -D $ELECDIR
 done
