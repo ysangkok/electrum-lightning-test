@@ -58,6 +58,9 @@ set +x
 
 function retryuntilnonnull {
   while true; do
+    if [[ "$3" == "" ]]; then
+      3="[]"
+    fi
     OUT="$(echo -- $3 | ../venv/bin/python ./electrum --testnet lightning $1 -D $2 --lightningargs -)"
     CODE="$(echo $OUT | jq .returncode || true)"
     if [[ $CODE == "null" ]]; then
