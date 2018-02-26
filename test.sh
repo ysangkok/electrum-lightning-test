@@ -59,9 +59,11 @@ set +x
 function retryuntilnonnull {
   while true; do
     if [[ "$3" == "" ]]; then
-      3="[]"
+      lightningargs="[]"
+    else
+      lightningargs="$3"
     fi
-    OUT="$(echo -- $3 | ../venv/bin/python ./electrum --testnet lightning $1 -D $2 --lightningargs -)"
+    OUT="$(echo -- $lightningargs | ../venv/bin/python ./electrum --testnet lightning $1 -D $2 --lightningargs -)"
     CODE="$(echo $OUT | jq .returncode || true)"
     if [[ $CODE == "null" ]]; then
       # returncode is only there on error (see lncli_endpoint.py)
@@ -80,18 +82,7 @@ set -x
 
 NODE1PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR1 | jq -r .identity_pubkey)
 NODE2PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR2 | jq -r .identity_pubkey)
-while true; do
-	ARGS=$(echo "["\""$NODE1PUBK@127.0.0.1"\""]")
-  OUT="$(echo $ARGS | ../venv/bin/python electrum --testnet lightning connect -D $ELECDIR2 --lightningargs -)"
-  CODE="$(echo $OUT | jq .returncode || true)"
-  if [[ $CODE == "null" ]]; then
-    # returncode is only there on error (see lncli_endpoint.py)
-    echo "$OUT"
-    break
-  fi
-  echo "$OUT" | jq .stderr
-  sleep 10
-done
+retryonnonnull connect $ELECDIR2 "["\""$NODE1PUBK@127.0.0.1"\""]"
 
 NODE1ADDR=$(echo "["\""p2wkh"\""]" | ../venv/bin/python electrum --testnet lightning newaddress -D $ELECDIR1 --lightningargs - | jq -r .address)
 if [[ $NODE1ADDR == "null" ]]; then
