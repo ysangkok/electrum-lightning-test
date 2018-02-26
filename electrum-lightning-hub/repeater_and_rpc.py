@@ -358,8 +358,27 @@ class RealPortsSupplier:
             creds = grpc.ssl_channel_credentials(cert)
             endpoint = 'ipv4:///127.0.0.1:' + str(chosenPort + 10009)
             asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "InvoiceSubscription", "SubscribeInvoices"))
-            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GraphTopologySubscription", "SubscribeChannelGraph"))
-            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GetTransactionRequest", "SubscribeTransactions"))
+            # 2018-02-26T12:42:08.652111 1 SubscribeChannelGraph channel_updates {
+            #   chan_id: 1347846224522444800
+            #   chan_point {
+            #     funding_txid_bytes: "`E\251\030\376\224\354>\223bgy\240\266&6Wq\242\240T\373\210\177o\256\245\315\320\275\020\310"
+            #   }
+            #   capacity: 11951584
+            #   routing_policy {
+            #     time_lock_delta: 144
+            #     fee_base_msat: 1000
+            #     fee_rate_milli_msat: 1
+            #   }
+            #   advertising_node: "03e6b04d79aeba31c34334c72e6160be5ece0fcb6784f44cb1ba516d77fd700ee1"
+            #   connecting_node: "02464bfaaae78b98268a6a6d7e8f6a110c60dd1293811d6029b11ee9edb4bbf869"
+            # }
+            # 
+            # 2018-02-26T12:42:08.710398 1 SubscribeChannelGraph node_updates {
+            #   identity_key: "02c1376e9814d2ba3176b2127c3f4fba6c90b9e5dcffaa5ad880eb8a5f0e50c6cf"
+            #   alias: "02c1376e9814d2ba3176"
+            # }
+            #asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GraphTopologySubscription", "SubscribeChannelGraph"))
+            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GetTransactionsRequest", "SubscribeTransactions"))
 
         return PortPair(electrumReverseHTTPPort=8432 + (self.keysToOffset[socksKey] * 5), lndRPCPort=10009 + self.keysToOffset[socksKey] , datadir=datadir)
 
