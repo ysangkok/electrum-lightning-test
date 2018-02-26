@@ -129,7 +129,7 @@ echo $NODE2PUBK 100000 | python3 -c 'import json, sys; print(json.dumps(sys.stdi
 set +x
 while true; do
   OUT="$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1)"
-  CODE="$(echo $OUT | jq ".|length" || true)"
+  CODE="$(echo $OUT | jq -r length || true)"
   if [[ $CODE == "1" ]]; then
 		echo "$OUT"
     break
@@ -138,7 +138,7 @@ while true; do
 done
 set -x
 
-PAYREQ=$(retryuntilnonnull addinvoice $ELECDIR2 "["\""--amt=8192"\""]" | jq .pay_req)
+PAYREQ=$(retryuntilnonnull addinvoice $ELECDIR2 "["\""--amt=8192"\""]" | jq -r .pay_req)
 echo "["\""--pay_req=$PAYREQ"\""]" | ../venv/bin/python electrum --testnet lightning sendpayment -D $ELECDIR1 --lightningargs -
 
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
