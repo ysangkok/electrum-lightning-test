@@ -138,7 +138,7 @@ while true; do
 done
 set -x
 
-PAYREQ=$(retryuntilnonnull addinvoice $ELECDIR2 "["\""--value=8192"\""]" | jq .pay_req)
+PAYREQ=$(retryuntilnonnull addinvoice $ELECDIR2 "["\""--amt=8192"\""]" | jq .pay_req)
 echo "["\""--pay_req=$PAYREQ"\""]" | ../venv/bin/python electrum --testnet lightning sendpayment -D $ELECDIR1 --lightningargs -
 
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
