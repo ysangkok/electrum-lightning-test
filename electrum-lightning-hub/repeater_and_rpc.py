@@ -378,7 +378,7 @@ class RealPortsSupplier:
             #   alias: "02c1376e9814d2ba3176"
             # }
             #asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GraphTopologySubscription", "SubscribeChannelGraph"))
-            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GetTransactionsRequest", "SubscribeTransactions"))
+            #asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GetTransactionsRequest", "SubscribeTransactions"))
 
         return PortPair(electrumReverseHTTPPort=8432 + (self.keysToOffset[socksKey] * 5), lndRPCPort=10009 + self.keysToOffset[socksKey] , datadir=datadir)
 
