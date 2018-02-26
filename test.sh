@@ -55,18 +55,23 @@ for ELECDIR in $ELECDIR1 $ELECDIR2; do
 done
 sleep 5
 set +x
-for ELECDIR in $ELECDIR1 $ELECDIR2; do
+
+function retryuntilnonnull {
   while true; do
-    OUT="$(PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet lightning getinfo -D $ELECDIR)"
+    OUT="$(echo $3 | ../venv/bin/python ./electrum --testnet lightning $1 -D $2 --lightningargs -)"
     CODE="$(echo $OUT | jq .returncode || true)"
     if [[ $CODE == "null" ]]; then
       # returncode is only there on error (see lncli_endpoint.py)
       echo "$OUT"
       break
     fi
-    echo "$OUT" | jq .stderr
+    echo "$OUT" | jq .stderr >> /dev/stderr
     sleep 10
   done
+}
+
+for ELECDIR in $ELECDIR1 $ELECDIR2; do
+	retryuntilnonnull getinfo $ELECDIR
 done
 set -x
 
@@ -139,7 +144,7 @@ while true; do
 done
 set -x
 
-PAYREQ=$(echo "["\""--value=8192"\""]" | ../venv/bin/python electrum --testnet lightning addinvoice -D $ELECDIR2 --lightningargs - | jq .pay_req)
+PAYREQ=$(retryuntilnonnull addinvoice $ELECDIR2 "["\""--value=8192"\""]" | jq .pay_req)
 echo "["\""--pay_req=$PAYREQ"\""]" | ../venv/bin/python electrum --testnet lightning sendpayment -D $ELECDIR1 --lightningargs -
 
 PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1
