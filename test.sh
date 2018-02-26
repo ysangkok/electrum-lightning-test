@@ -82,7 +82,7 @@ set -x
 
 NODE1PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR1 | jq -r .identity_pubkey)
 NODE2PUBK=$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning getinfo -D $ELECDIR2 | jq -r .identity_pubkey)
-retryonnonnull connect $ELECDIR2 "["\""$NODE1PUBK@127.0.0.1"\""]"
+retryuntilnonnull connect $ELECDIR2 "["\""$NODE1PUBK@127.0.0.1"\""]"
 
 NODE1ADDR=$(echo "["\""p2wkh"\""]" | ../venv/bin/python electrum --testnet lightning newaddress -D $ELECDIR1 --lightningargs - | jq -r .address)
 if [[ $NODE1ADDR == "null" ]]; then
