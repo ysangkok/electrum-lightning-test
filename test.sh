@@ -129,7 +129,7 @@ echo $NODE2PUBK 100000 | python3 -c 'import json, sys; print(json.dumps(sys.stdi
 set +x
 while true; do
   OUT="$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet lightning listchannels -D $ELECDIR1)"
-  CODE="$(echo $OUT | jq -r length || true)"
+  CODE="$(echo $OUT | jq -r '.channels|length' || true)"
   if [[ $CODE == "1" ]]; then
 		echo "$OUT"
     break
