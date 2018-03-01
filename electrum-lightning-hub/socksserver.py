@@ -29,7 +29,7 @@ def make_handler(assoc, realPortsSupplier):
 
             answered = False
             while not reader.at_eof():
-                newlines = sum(1 if x == b"\n" else 0 for x in data)
+                newlines = sum(1 if x == b"\n"[0] else 0 for x in data)
                 if newlines > 1: print("Too many newlines 1!", data)
                 try:
                     data += await asyncio.wait_for(reader.read(2048), 3)
@@ -68,7 +68,7 @@ async def queueMonitor(readQueue, writeQueue, port, killQueue):
             async def copyToSocks():
                 data = b""
                 while True:
-                    newlines = sum(1 if x == b"\n" else 0 for x in data)
+                    newlines = sum(1 if x == b"\n"[0] else 0 for x in data)
                     if newlines > 1: print("Too many newlines 2!", data)
                     try:
                         payload = json.loads(data.decode("ascii"))
