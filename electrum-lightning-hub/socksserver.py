@@ -1,15 +1,7 @@
 #!/usr/bin/env python3.5
-import socket
 import asyncio
-from struct import pack, unpack
 import sys
-import traceback
-from queue import Queue
 import json
-import async_timeout
-import concurrent.futures
-
-queue = asyncio.Queue()
 
 def make_handler(assoc, realPortsSupplier):
     async def handler(reader, writer):

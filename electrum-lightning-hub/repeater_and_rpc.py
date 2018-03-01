@@ -313,13 +313,15 @@ def make_chain(offset, silent, simnet, testnet, datadir):
   assert 8432 + offset not in assoc
   assoc[8432 + offset] = Queues()
 
-  queueMonitor = socksserver.queueMonitor(assoc[8432+offset].readQueue, assoc[8432+offset].writeQueue, 8432+offset, assoc[8432+offset].killQueue)
+  writeQueue = assoc[8432+offset].writeQueue
+  queueMonitor = socksserver.queueMonitor(assoc[8432+offset].readQueue, writeQueue, 8432+offset, assoc[8432+offset].killQueue)
   lnd = get_lnd_server(9090+offset//5, peerport=9735+offset//5, rpcport=10009+offset//5, restport=8081+offset//5, silent=silent, simnet=simnet, testnet=testnet, datadir=datadir)
-  return [lnd, coro, elec1, queueMonitor]
+  # return writeQueue as invoiceQueue
+  return [lnd, coro, elec1, queueMonitor], writeQueue
 
 PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'datadir'])
 
-async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageClass, streamingRpcFunc):
+async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageClass, streamingRpcFunc, invoiceQueue):
     while True:
         try:
             channel = secure_channel(connStr, creds)
@@ -328,6 +330,7 @@ async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageCla
             invoiceSource = getattr(mystub, streamingRpcFunc)(request)
             async for invoice in invoiceSource:
                 print(datetime.now().isoformat(), prefix, streamingRpcFunc, invoice)
+                await invoiceQueue.put(json_format.MessageToJson(invoice).encode("ascii"))
         except grpc.RpcError as rpc_error:
             try:
                 message = rpc_error.details()
@@ -348,7 +351,8 @@ class RealPortsSupplier:
         datadir = "/tmp/lnd_datadir_" + binascii.hexlify(socksKey).decode("ascii")
         # socksKey is the first 6 bytes of a private key hash
         if socksKey not in self.keysToOffset:
-            asyncio.ensure_future(asyncio.gather(*make_chain(self.currentOffset * 5, False, self.simnet, self.testnet, datadir)))
+            chain, invoiceQueue = make_chain(self.currentOffset * 5, False, self.simnet, self.testnet, datadir)
+            asyncio.ensure_future(asyncio.gather(*chain))
             self.currentOffset += 1
             chosenPort = self.currentOffset - 1
             self.keysToOffset[socksKey] = chosenPort
@@ -357,7 +361,7 @@ class RealPortsSupplier:
               cert = fp.read()
             creds = grpc.ssl_channel_credentials(cert)
             endpoint = 'ipv4:///127.0.0.1:' + str(chosenPort + 10009)
-            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "InvoiceSubscription", "SubscribeInvoices"))
+            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "InvoiceSubscription", "SubscribeInvoices", invoiceQueue))
             # 2018-02-26T12:42:08.652111 1 SubscribeChannelGraph channel_updates {
             #   chan_id: 1347846224522444800
             #   chan_point {
