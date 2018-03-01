@@ -271,7 +271,7 @@ def mkhandler(port):
           while True:
               data += await client_reader.read()
               try:
-                  parsedresponse = json.loads(data.split(b"\n")[-1].decode("ascii"))
+                  parsedresponse = json.loads(data.decode("ascii"))
                   assert parsedresponse["id"] == parsedrequest["id"], "mismatched response " + repr(parsedresponse) + " for request " + repr(parsedrequest)
                   break
               except:
@@ -330,7 +330,7 @@ async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageCla
             invoiceSource = getattr(mystub, streamingRpcFunc)(request)
             async for invoice in invoiceSource:
                 print(datetime.now().isoformat(), prefix, streamingRpcFunc, invoice)
-                await invoiceQueue.put(json_format.MessageToJson(invoice).encode("ascii"))
+                await invoiceQueue.put(json_format.MessageToJson(invoice).encode("ascii") + b"\n")
         except grpc.RpcError as rpc_error:
             try:
                 message = rpc_error.details()
