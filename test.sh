@@ -104,6 +104,8 @@ while [[ $(../venv/bin/python electrum --testnet is_synchronized) != "true" ]]; 
   sleep 1
 done
 ../venv/bin/python electrum --testnet daemon status # TODO check if server_height == local_height
+../venv/bin/python electrum --testnet getbalance
+../venv/bin/python electrum --testnet listaddresses
 ../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum --testnet broadcast -
 sleep 1
 ../venv/bin/python electrum --testnet daemon stop

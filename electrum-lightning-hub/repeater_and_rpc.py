@@ -339,7 +339,7 @@ async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageCla
                 message = rpc_error.details()
             except AttributeError:
                 message = str(rpc_error)
-            logging.info("sleeping, streaming update", prefix, streamingRpcFunc, "failed:", message)
+            logging.info("sleeping, streaming update %s %s failed: %s", prefix, streamingRpcFunc, message)
             await asyncio.sleep(5)
             continue
 
