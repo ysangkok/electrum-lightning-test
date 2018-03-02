@@ -40,7 +40,7 @@ import socksserver
 from lncli_endpoint import create_on_loop
 
 import logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
