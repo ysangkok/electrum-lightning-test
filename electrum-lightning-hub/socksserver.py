@@ -2,6 +2,7 @@
 import asyncio
 import sys
 import json
+import logging
 
 def make_handler(assoc, realPortsSupplier):
     async def handler(reader, writer):
@@ -11,7 +12,7 @@ def make_handler(assoc, realPortsSupplier):
         key = await reader.read(6)
         portPair = await realPortsSupplier.get(key)
         realPort = portPair.electrumReverseHTTPPort
-        print("socksserver using realport = {}".format(realPort))
+        logging.info("socksserver using realport = {}".format(realPort))
         read, toWrite = assoc[realPort].readQueue, assoc[realPort].writeQueue
 
         while True:
@@ -21,8 +22,8 @@ def make_handler(assoc, realPortsSupplier):
                 await writer.drain()
             except:
                 await toWrite.put(req)
-                print("error while draining")
-                print("put back on queue, queue now", toWrite.qsize())
+                logging.info("error while draining")
+                logging.info("put back on queue, queue now", toWrite.qsize())
                 return
 
             data = b""
@@ -30,15 +31,15 @@ def make_handler(assoc, realPortsSupplier):
             answered = False
             while not reader.at_eof():
                 newlines = sum(1 if x == b"\n"[0] else 0 for x in data)
-                if newlines > 1: print("Too many newlines 1!", data)
+                if newlines > 1: logging.warning("Too many newlines 1! %s", repr(data))
                 try:
-                    data += await asyncio.wait_for(reader.read(2048), 3)
-                except TimeoutError:
+                    data += await asyncio.wait_for(reader.read(2048), 5)
+                except asyncio.TimeoutError:
                     break
                 try:
                     json.loads(data.decode("ascii"))
                 except ValueError:
-                    print("ValueError while loading: data: ", data)
+                    logging.warning("ValueError while loading: data: ", data)
                     continue
                 else:
                     await read.put(data)
@@ -46,8 +47,8 @@ def make_handler(assoc, realPortsSupplier):
                     break
             if not answered:
                 await toWrite.put(req)
-                print("incomplete data received: " + repr(data))
-                print("put back on queue, queue now", toWrite.qsize())
+                logging.warning("incomplete data received: " + repr(data))
+                logging.warning("put back on queue, queue now %d", toWrite.qsize())
     return handler
 
 async def queueMonitor(readQueue, writeQueue, port, killQueue):
@@ -69,7 +70,7 @@ async def queueMonitor(readQueue, writeQueue, port, killQueue):
                 data = b""
                 while True:
                     newlines = sum(1 if x == b"\n"[0] else 0 for x in data)
-                    if newlines > 1: print("Too many newlines 2!", data)
+                    if newlines > 1: logging.warning("Too many newlines 2! %s", repr(data))
                     try:
                         payload = json.loads(data.decode("ascii"))
                     except ValueError:

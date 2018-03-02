@@ -39,6 +39,9 @@ import socksserver
 
 from lncli_endpoint import create_on_loop
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
 class H2Protocol(asyncio.Protocol):
@@ -117,7 +120,7 @@ class H2Protocol(asyncio.Protocol):
       try:
           request_data = self.stream_data[stream_id]
       except KeyError:
-          print("probably already 405")
+          logging.info("probably already 405")
           # Just return, we probably 405'd this already
           return
 
@@ -128,21 +131,21 @@ class H2Protocol(asyncio.Protocol):
       methods = [x for x in rpc_pb2_grpc.ElectrumBridgeServicer.__dict__.keys() if not x.startswith("__")]
 
       path = dict(headers)[":path"]
-      print("PATH:", path)
+      logging.info("PATH:" + path)
 
       for methodname in methods:
         if methodname in path:
           a = rpc_pb2.__dict__[methodname + "Request"]()
           # https://grpc.io/docs/guides/wire.html
           if body[0] != 0:
-            print("compressed grpc message?")
-            print("  ", body)
-            print("  ", methodname + "Request")
+            logging.warning("compressed grpc message?")
+            logging.warning(body)
+            logging.warning(methodname + "Request")
 
           dec = int.from_bytes(body[1:5], byteorder="big")
           if dec + 5 != len(body):
-            print("length mismatch?")
-            print("  ", body[1:5], dec, len(body))
+            logging.warning("length mismatch?")
+            logging.warning("{} {} {}".format(body[1:5], dec, len(body)))
           a.ParseFromString(body[5:])
           jso = json_format.MessageToJson(a)
           if len(json.loads(jso).keys()) == 0 and methodname == "FetchInputInfo":
@@ -151,9 +154,9 @@ class H2Protocol(asyncio.Protocol):
           def done(fut):
             try:
               fut.exception()
-              print("result", fut.result())
+              logging.info("result " + repr(fut.result()))
             except Exception as e:
-              print("While handling " + methodname)
+              logging.warning("While handling " + methodname)
               traceback.print_exc()
               response_headers = (
                   (':status', '500'),
@@ -194,7 +197,7 @@ def make_h2handler(port, killQueuePort):
     if port in servers:
       return servers[port]
     servers[port] = H2Protocol(Server("http://localhost:" + str(port)), killQueuePort)
-    print("made new client connecting to port", port)
+    logging.info("made new client connecting to port " + str(port))
     return servers[port]
   return handler
 
@@ -248,7 +251,7 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simn
       kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
       bitcoinrpcport = 18556 if simnet else 18334 # TODO does not support mainnet
       cmd = "~/go/bin/lnd --no-macaroons --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --btcd.rpcuser=youruser --btcd.rpcpass=SomeDecentp4ssw0rd --btcd.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
-      print(cmd)
+      logging.info(cmd)
       lnd = await asyncio.create_subprocess_shell(cmd, **kwargs)
       return lnd
 
@@ -277,7 +280,7 @@ def mkhandler(port):
               except:
                   await asyncio.sleep(0.1)
           await q.put(json.dumps(parsedresponse).encode("utf-8"))
-      print("waiting for server lock {}".format(port))
+      logging.info("waiting for server lock {}".format(port))
       async with locks[port]:
         server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
         resp = None
@@ -286,7 +289,7 @@ def mkhandler(port):
             resp = await asyncio.wait_for(q.get(), 5)
             assert resp, "Got None from queue!"
           except asyncio.TimeoutError: 
-            print("{} was not connected to!".format(port))
+            logging.info("{} was not connected to!".format(port))
           else:
             server.close()
             await server.wait_closed()
@@ -306,7 +309,7 @@ class Queues:
         self.killQueue = asyncio.Queue()
 
 def make_chain(offset, silent, simnet, testnet, datadir):
-  print("starting chain on " + str(9090 + offset//5))
+  logging.info("starting chain on " + str(9090 + offset//5))
   coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset), '127.0.0.1', 9090+offset//5)
   elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
 
@@ -329,14 +332,14 @@ async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageCla
             request = getattr(lnrpc, subscriptionMessageClass)()
             invoiceSource = getattr(mystub, streamingRpcFunc)(request)
             async for invoice in invoiceSource:
-                print(datetime.now().isoformat(), prefix, streamingRpcFunc, invoice)
+                logging.info(prefix, streamingRpcFunc, invoice)
                 await invoiceQueue.put(json_format.MessageToJson(invoice).encode("ascii") + b"\n")
         except grpc.RpcError as rpc_error:
             try:
                 message = rpc_error.details()
             except AttributeError:
                 message = str(rpc_error)
-            print("sleeping, streaming update", prefix, streamingRpcFunc, "failed:", message)
+            logging.info("sleeping, streaming update", prefix, streamingRpcFunc, "failed:", message)
             await asyncio.sleep(5)
             continue
 

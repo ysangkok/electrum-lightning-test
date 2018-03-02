@@ -4,6 +4,7 @@ from aiohttp import web
 import subprocess
 import shlex
 import base64
+import logging
 
 def make_app(realPortsSupplier):
     async def handleGet(request):
@@ -21,7 +22,7 @@ def make_app(realPortsSupplier):
         portPair = await realPortsSupplier.get(base64.b64decode(parsed_request["params"][0]))
         #--macaroonpath=" + portPair.datadir + "/admin.macaroon
         cmd = "~/go/bin/lncli --no-macaroons --rpcserver=localhost:" + str(portPair.lndRPCPort) + " " + shlex.quote(parsed_request["method"]) + " " + " ".join(shlex.quote(x) for x in parsed_request["params"][1:])
-        print(cmd)
+        logging.info(cmd)
         proc = await asyncio.create_subprocess_shell(cmd=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         response = {}
         try:
