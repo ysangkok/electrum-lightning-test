@@ -154,7 +154,7 @@ class H2Protocol(asyncio.Protocol):
           def done(fut):
             try:
               fut.exception()
-              logging.info("result " + repr(fut.result()))
+              logging.info("result " + fut.result())
             except Exception as e:
               logging.warning("While handling " + methodname)
               traceback.print_exc()
@@ -332,7 +332,7 @@ async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageCla
             request = getattr(lnrpc, subscriptionMessageClass)()
             invoiceSource = getattr(mystub, streamingRpcFunc)(request)
             async for invoice in invoiceSource:
-                logging.info(prefix, streamingRpcFunc, invoice)
+                logging.info("%s %s %s", prefix, streamingRpcFunc, invoice)
                 await invoiceQueue.put(json_format.MessageToJson(invoice).encode("ascii") + b"\n")
         except grpc.RpcError as rpc_error:
             try:

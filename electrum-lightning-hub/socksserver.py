@@ -23,10 +23,12 @@ def make_handler(assoc, realPortsSupplier):
             except:
                 await toWrite.put(req)
                 logging.info("error while draining")
-                logging.info("put back on queue, queue now", toWrite.qsize())
+                logging.info("put back on queue, queue now %d", toWrite.qsize())
                 return
 
             data = b""
+
+            logging.info("sent %s", req)
 
             answered = False
             while not reader.at_eof():
@@ -47,8 +49,9 @@ def make_handler(assoc, realPortsSupplier):
                     break
             if not answered:
                 await toWrite.put(req)
-                logging.warning("incomplete data received: " + repr(data))
-                logging.warning("put back on queue, queue now %d", toWrite.qsize())
+                if len(data) != 0:
+                    logging.warning("incomplete data received: " + repr(data))
+                    logging.warning("put back on queue, queue now %d", toWrite.qsize())
     return handler
 
 async def queueMonitor(readQueue, writeQueue, port, killQueue):
