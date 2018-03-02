@@ -28,7 +28,11 @@ def make_handler(assoc, realPortsSupplier):
 
             data = b""
 
-            logging.info("sent %s", req)
+            try:
+                json.loads(req)["id"]
+            except:
+                logging.info("request has no id, not reading reply: %s", req)
+                continue
 
             answered = False
             while not reader.at_eof():
