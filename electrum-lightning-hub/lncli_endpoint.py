@@ -20,7 +20,7 @@ def make_app(realPortsSupplier):
         content = await request.content.read()
         parsed_request = json.loads(content.decode("ascii"))
         portPair = await realPortsSupplier.get(base64.b64decode(parsed_request["params"][0]))
-        cmd = "~/go/bin/lncli --lnddir=" + portPair.lnddir + " --rpcserver=localhost:" + str(portPair.lndRPCPort) + " " + shlex.quote(parsed_request["method"]) + " " + " ".join(shlex.quote(x) for x in parsed_request["params"][1:])
+        cmd = "~/go/bin/lncli --macaroonpath=" + portPair.lnddir + "/admin.macaroon --lnddir=" + portPair.lnddir + " --rpcserver=localhost:" + str(portPair.lndRPCPort) + " " + shlex.quote(parsed_request["method"]) + " " + " ".join(shlex.quote(x) for x in parsed_request["params"][1:])
         logging.info(cmd)
         proc = await asyncio.create_subprocess_shell(cmd=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         response = {}
