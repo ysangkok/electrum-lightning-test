@@ -10,6 +10,7 @@ if [ ! -d ~/go/src/github.com/lightningnetwork/lnd ]; then
 	git clone https://github.com/ysangkok/lnd
 	cd -
 fi
+(cd ~/go/src/github.com/lightningnetwork/lnd && git fetch --all && git reset --hard origin/electrum && git checkout -f origin/electrum)
 if [ ! -f ~/go/bin/protoc ]; then
 	mkdir -p ~/go || true
 	cd ~/go
@@ -40,7 +41,6 @@ if [ -f contrib/deterministic-build/requirements.txt ]; then
 else
   ../venv/bin/pip install -r contrib/requirements.txt
 fi
-(cd ~/go/src/github.com/lightningnetwork/lnd && git fetch --all && git reset --hard origin/electrum && git checkout -f origin/electrum)
 (cd ~/go/src/github.com/lightningnetwork/lnd && ./protoc_electrum.sh)
 (cd ~/go/src/github.com/lightningnetwork/lnd && go get -u github.com/Masterminds/glide && ~/go/bin/glide install && go install . ./cmd/...)
 ./protoc_lightning.sh

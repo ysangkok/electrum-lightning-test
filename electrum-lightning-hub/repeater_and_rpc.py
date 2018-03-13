@@ -14,7 +14,7 @@ import grpc
 from aiogrpc import secure_channel
 from aiohttp import web
 
-from lib.ln import rpc_pb2_grpc, rpc_pb2
+from lib.ln.electrum_bridge import rpc_pb2_grpc, rpc_pb2
 
 import lib.ln.lnrpc.rpc_pb2 as lnrpc
 import lib.ln.lnrpc.rpc_pb2_grpc as lnrpcgrpc

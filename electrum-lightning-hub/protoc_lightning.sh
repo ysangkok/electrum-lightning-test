@@ -10,6 +10,7 @@ if [ ! -d $LNDDIR ]; then
   echo "You need an lnd with electrum-bridge (ysangkok/lnd maybe?) checked out since we implement the interface from there, and need it to generate code"
   exit 1
 fi
+rm -rf lib/ln
 mkdir -p lib/ln
 touch lib/__init__.py
 ~/go/bin/protoc -I$HOME/include -I$HOME/go/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis --python_out=lib/ln $HOME/go/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis/google/api/*.proto
