@@ -9,7 +9,7 @@ import logging
 def make_app(realPortsSupplier):
     async def handleGet(request):
         portPair = await realPortsSupplier.get(base64.b64decode(request.query["privKeyHash"]))
-        proc = await asyncio.create_subprocess_shell(cmd="tar c " + shlex.quote(portPair.datadir), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = await asyncio.create_subprocess_shell(cmd="tar c " + shlex.quote(portPair.lnddir), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
           await asyncio.wait_for(proc.wait(), 5)
         except asyncio.TimeoutError:
@@ -20,8 +20,7 @@ def make_app(realPortsSupplier):
         content = await request.content.read()
         parsed_request = json.loads(content.decode("ascii"))
         portPair = await realPortsSupplier.get(base64.b64decode(parsed_request["params"][0]))
-        #--macaroonpath=" + portPair.datadir + "/admin.macaroon
-        cmd = "~/go/bin/lncli --no-macaroons --rpcserver=localhost:" + str(portPair.lndRPCPort) + " " + shlex.quote(parsed_request["method"]) + " " + " ".join(shlex.quote(x) for x in parsed_request["params"][1:])
+        cmd = "~/go/bin/lncli --lnddir=" + portPair.lnddir + " --rpcserver=localhost:" + str(portPair.lndRPCPort) + " " + shlex.quote(parsed_request["method"]) + " " + " ".join(shlex.quote(x) for x in parsed_request["params"][1:])
         logging.info(cmd)
         proc = await asyncio.create_subprocess_shell(cmd=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         response = {}

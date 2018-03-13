@@ -247,10 +247,9 @@ def get_btcd_server(miningaddr):
 
 async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simnet, testnet, datadir):
       assert simnet and not testnet or not simnet and testnet
-      logdir=tempfile.TemporaryDirectory(prefix="lnd_logdir")
       kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
       bitcoinrpcport = 18556 if simnet else 18334 # TODO does not support mainnet
-      cmd = "~/go/bin/lnd --no-macaroons --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --logdir=" + logdir.name + " --datadir=" + datadir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --btcd.rpcuser=youruser --btcd.rpcpass=SomeDecentp4ssw0rd --btcd.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
+      cmd = "~/go/bin/lnd --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --lnddir=" + lnddir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --btcd.rpcuser=youruser --btcd.rpcpass=SomeDecentp4ssw0rd --btcd.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
       logging.info(cmd)
       lnd = await asyncio.create_subprocess_shell(cmd, **kwargs)
       return lnd
@@ -308,7 +307,7 @@ class Queues:
         self.writeQueue = asyncio.Queue()
         self.killQueue = asyncio.Queue()
 
-def make_chain(offset, silent, simnet, testnet, datadir):
+def make_chain(offset, silent, simnet, testnet, lnddir):
   logging.info("starting chain on " + str(9090 + offset//5))
   coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset), '127.0.0.1', 9090+offset//5)
   elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
@@ -318,11 +317,11 @@ def make_chain(offset, silent, simnet, testnet, datadir):
 
   writeQueue = assoc[8432+offset].writeQueue
   queueMonitor = socksserver.queueMonitor(assoc[8432+offset].readQueue, writeQueue, 8432+offset, assoc[8432+offset].killQueue)
-  lnd = get_lnd_server(9090+offset//5, peerport=9735+offset//5, rpcport=10009+offset//5, restport=8081+offset//5, silent=silent, simnet=simnet, testnet=testnet, datadir=datadir)
+  lnd = get_lnd_server(9090+offset//5, peerport=9735+offset//5, rpcport=10009+offset//5, restport=8081+offset//5, silent=silent, simnet=simnet, testnet=testnet, lnddir=lnddir)
   # return writeQueue as invoiceQueue
   return [lnd, coro, elec1, queueMonitor], writeQueue
 
-PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'datadir'])
+PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'lnddir'])
 
 async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageClass, streamingRpcFunc, invoiceQueue):
     while True:
@@ -351,10 +350,10 @@ class RealPortsSupplier:
         self.simnet = simnet
     # returns keys for assoc
     async def get(self, socksKey):
-        datadir = "/tmp/lnd_datadir_" + binascii.hexlify(socksKey).decode("ascii")
+        lnddir = "/tmp/lnd_" + binascii.hexlify(socksKey).decode("ascii")
         # socksKey is the first 6 bytes of a private key hash
         if socksKey not in self.keysToOffset:
-            chain, invoiceQueue = make_chain(self.currentOffset * 5, False, self.simnet, self.testnet, datadir)
+            chain, invoiceQueue = make_chain(self.currentOffset * 5, False, self.simnet, self.testnet, lnddir)
             asyncio.ensure_future(asyncio.gather(*chain))
             self.currentOffset += 1
             chosenPort = self.currentOffset - 1
@@ -387,7 +386,7 @@ class RealPortsSupplier:
             #asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GraphTopologySubscription", "SubscribeChannelGraph"))
             #asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "GetTransactionsRequest", "SubscribeTransactions"))
 
-        return PortPair(electrumReverseHTTPPort=8432 + (self.keysToOffset[socksKey] * 5), lndRPCPort=10009 + self.keysToOffset[socksKey] , datadir=datadir)
+        return PortPair(electrumReverseHTTPPort=8432 + (self.keysToOffset[socksKey] * 5), lndRPCPort=10009 + self.keysToOffset[socksKey] , lnddir=lnddir)
 
 
 loop = asyncio.get_event_loop()
