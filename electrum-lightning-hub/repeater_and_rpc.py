@@ -245,7 +245,7 @@ def get_btcd_server(miningaddr):
     cmd = "/home/janus/go/bin/btcd -C " + shlex.quote(t.name) + " --datadir " + shlex.quote(datadir.name) + " --connect localhost"
     return asyncio.create_subprocess_shell(cmd)
 
-async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simnet, testnet, datadir):
+async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simnet, testnet, lnddir):
       assert simnet and not testnet or not simnet and testnet
       kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
       bitcoinrpcport = 18556 if simnet else 18334 # TODO does not support mainnet
