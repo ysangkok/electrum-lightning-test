@@ -42,7 +42,7 @@ else
   ../venv/bin/pip install -r contrib/requirements.txt
 fi
 (cd ~/go/src/github.com/lightningnetwork/lnd && ./protoc_electrum.sh)
-(cd ~/go/src/github.com/lightningnetwork/lnd && go get -u github.com/Masterminds/glide && ~/go/bin/glide install && go install . ./cmd/...)
+(cd ~/go/src/github.com/lightningnetwork/lnd && go get -u github.com/golang/dep/cmd/dep && ~/go/bin/dep ensure && go install . ./cmd/...)
 ./protoc_lightning.sh
 ELECDIR1=$(mktemp)
 ELECDIR2=$(mktemp)

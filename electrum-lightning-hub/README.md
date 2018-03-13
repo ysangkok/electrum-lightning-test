@@ -4,7 +4,8 @@ sudo add-apt-repository ppa:longsleep/golang-backports
 sudo apt-get update
 sudo apt-get install golang-go
 
-# Glide dependency manager
+# dependency managers
+go get -u github.com/golang/dep/cmd/dep
 go get -u github.com/Masterminds/glide
 
 # It is recommended that $GOPATH is set to a directory in your home directory such as ~/go to avoid write permission issues. It is also recommended to add $GOPATH/bin to your PATH at this point.
@@ -55,7 +56,7 @@ cd electrum-lightning-test/electrum-lightning-hub
 ./protoc_lightning.sh
 
 cd $GOPATH/src/github.com/lightningnetwork/lnd
-glide install
+dep ensure
 go get -u github.com/golang/protobuf/protoc-gen-go
 go get -u github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
 ./protoc_electrum.sh
