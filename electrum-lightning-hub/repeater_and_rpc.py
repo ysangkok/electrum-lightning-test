@@ -338,7 +338,7 @@ async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageCla
                 message = rpc_error.details()
             except AttributeError:
                 message = str(rpc_error)
-            logging.info("sleeping, streaming update %s %s failed: %s", prefix, streamingRpcFunc, message)
+            #logging.info("sleeping, streaming update %s %s failed: %s", prefix, streamingRpcFunc, message)
             await asyncio.sleep(5)
             continue
 
@@ -361,6 +361,8 @@ class RealPortsSupplier:
 
             with open(os.path.expanduser('~/.lnd/tls.cert'), "rb") as fp:
               cert = fp.read()
+            # https://github.com/LN-Zap/zap-desktop/issues/324#issuecomment-371355152
+            os.environ["GRPC_SSL_CIPHER_SUITES"] = 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256'
             creds = grpc.ssl_channel_credentials(cert)
             endpoint = 'ipv4:///127.0.0.1:' + str(chosenPort + 10009)
             asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "InvoiceSubscription", "SubscribeInvoices", invoiceQueue))
