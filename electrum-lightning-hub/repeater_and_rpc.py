@@ -359,7 +359,7 @@ class RealPortsSupplier:
             chosenPort = self.currentOffset - 1
             self.keysToOffset[socksKey] = chosenPort
 
-            with open(lnddir + '/tls.cert'), "rb") as fp:
+            with open(lnddir + '/tls.cert', "rb") as fp:
               cert = fp.read()
             # https://github.com/LN-Zap/zap-desktop/issues/324#issuecomment-371355152
             os.environ["GRPC_SSL_CIPHER_SUITES"] = 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256'
