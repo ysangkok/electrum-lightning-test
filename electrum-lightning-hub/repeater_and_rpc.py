@@ -359,8 +359,15 @@ class RealPortsSupplier:
             chosenPort = self.currentOffset - 1
             self.keysToOffset[socksKey] = chosenPort
 
-            with open(lnddir + '/tls.cert', "rb") as fp:
-              cert = fp.read()
+            cert = None
+            while True:
+              try:
+                with open(lnddir + '/tls.cert', "rb") as fp:
+                  cert = fp.read()
+                break
+              except FileNotFoundError:
+                logging.info("tls cert {} not ready, waiting".format(socksKey))
+                await asyncio.sleep(5)
             # https://github.com/LN-Zap/zap-desktop/issues/324#issuecomment-371355152
             os.environ["GRPC_SSL_CIPHER_SUITES"] = 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256'
             creds = grpc.ssl_channel_credentials(cert)
