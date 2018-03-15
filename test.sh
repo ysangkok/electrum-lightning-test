@@ -32,10 +32,9 @@ if [ ! -d ../electrum ]; then
 else
 	cd ../electrum
 fi
-git reset --hard
+git fetch --all
+git reset --hard origin/electrum
 git clean -d -x -f
-git checkout lightning
-git pull origin lightning
 if [ -f contrib/deterministic-build/requirements.txt ]; then
   ../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
 else
