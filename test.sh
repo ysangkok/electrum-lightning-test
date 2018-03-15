@@ -33,7 +33,7 @@ else
 	cd ../electrum
 fi
 git fetch --all
-git reset --hard origin/electrum
+git reset --hard origin/lightning
 git clean -d -x -f
 if [ -f contrib/deterministic-build/requirements.txt ]; then
   ../venv/bin/pip install -r contrib/deterministic-build/requirements.txt
