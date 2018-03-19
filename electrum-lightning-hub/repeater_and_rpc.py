@@ -285,7 +285,7 @@ def mkhandler(port):
         resp = None
         while resp is None:
           try:
-            resp = await asyncio.wait_for(q.get(), 5)
+            resp = await asyncio.wait_for(q.get(), 30)
             assert resp, "Got None from queue!"
           except asyncio.TimeoutError: 
             logging.info("{} was not connected to!".format(port))
