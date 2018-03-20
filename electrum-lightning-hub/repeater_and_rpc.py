@@ -353,7 +353,7 @@ class RealPortsSupplier:
         lnddir = "/tmp/lnd_" + binascii.hexlify(socksKey).decode("ascii")
         # socksKey is the first 6 bytes of a private key hash
         if socksKey not in self.keysToOffset:
-            chain, invoiceQueue = make_chain(self.currentOffset * 5, False, self.simnet, self.testnet, lnddir)
+            chain, invoiceQueue = make_chain(self.currentOffset * 5, True, self.simnet, self.testnet, lnddir)
             asyncio.ensure_future(asyncio.gather(*chain))
             self.currentOffset += 1
             chosenPort = self.currentOffset - 1
