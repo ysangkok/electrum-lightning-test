@@ -33,7 +33,7 @@ import shlex
 import tempfile
 import os
 import sys
-from subprocess import DEVNULL
+from subprocess import DEVNULL, PIPE
 
 import socksserver
 
@@ -245,6 +245,8 @@ def get_btcd_server(miningaddr):
     cmd = "/home/janus/go/bin/btcd -C " + shlex.quote(t.name) + " --datadir " + shlex.quote(datadir.name) + " --connect localhost"
     return asyncio.create_subprocess_shell(cmd)
 
+PEERPORTS_TO_PUBKEYS = {}
+
 async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simnet, testnet, lnddir):
       assert simnet and not testnet or not simnet and testnet
       kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
@@ -252,6 +254,18 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simn
       cmd = "~/go/bin/lnd --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --lnddir=" + lnddir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --btcd.rpcuser=youruser --btcd.rpcpass=SomeDecentp4ssw0rd --btcd.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
       logging.info(cmd)
       lnd = await asyncio.create_subprocess_shell(cmd, **kwargs)
+
+      cmd = "~/go/bin/lncli --lnddir=" + lnddir + " --rpcserver=localhost:" + str(rpcport) + " getinfo"
+      while True:
+        proc = await asyncio.create_subprocess_shell(cmd=cmd, stdout=PIPE, stderr=PIPE)
+        try:
+          await asyncio.wait_for(proc.wait(), 5)
+          if proc.returncode == 0: break
+        except asyncio.TimeoutError:
+          print("timeouterror")
+      pubkey = json.loads(await proc.stdout.read())["identity_pubkey"]
+      PEERPORTS_TO_PUBKEYS[peerport] = pubkey
+
       return lnd
 
 locks = collections.defaultdict(asyncio.Lock)
@@ -358,6 +372,21 @@ class RealPortsSupplier:
             self.currentOffset += 1
             chosenPort = self.currentOffset - 1
             self.keysToOffset[socksKey] = chosenPort
+
+            for otherPort in PEERPORTS_TO_PUBKEYS.keys():
+                otherPubkey = PEERPORTS_TO_PUBKEYS[otherPort]
+
+                cmd = "~/go/bin/lncli --lnddir=" + lnddir + " --rpcserver=localhost:" + str(self.currentOffset + 10009) + " connect " + shlex.quote(otherPubkey + "@localhost:" + str(otherPort))
+                while True:
+                  proc = await asyncio.create_subprocess_shell(cmd=cmd, stdout=PIPE, stderr=PIPE)
+                  try:
+                    await asyncio.wait_for(proc.wait(), 5)
+                    if proc.returncode != 0:
+                        print("connect failed")
+                    else:
+                        break
+                  except asyncio.TimeoutError:
+                    print("timeouterror connect")
 
             cert = None
             while True:
