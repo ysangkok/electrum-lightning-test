@@ -261,8 +261,9 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simn
         try:
           await asyncio.wait_for(proc.wait(), 5)
           if proc.returncode == 0: break
+          await asyncio.sleep(1)
         except asyncio.TimeoutError:
-          print("timeouterror")
+          logging.error("timeouterror")
       pubkey = json.loads(await proc.stdout.read())["identity_pubkey"]
       PEERPORTS_TO_PUBKEYS[peerport] = pubkey
 
@@ -377,16 +378,17 @@ class RealPortsSupplier:
                 otherPubkey = PEERPORTS_TO_PUBKEYS[otherPort]
 
                 cmd = "~/go/bin/lncli --lnddir=" + lnddir + " --rpcserver=localhost:" + str(self.currentOffset + 10009) + " connect " + shlex.quote(otherPubkey + "@localhost:" + str(otherPort))
-                while True:
+                for attempt_number in range(10):
                   proc = await asyncio.create_subprocess_shell(cmd=cmd, stdout=PIPE, stderr=PIPE)
                   try:
                     await asyncio.wait_for(proc.wait(), 5)
                     if proc.returncode != 0:
-                        print("connect failed")
+                        logging.error("connect failed for %d time", attempt_number)
+                        await asyncio.sleep(5)
                     else:
                         break
                   except asyncio.TimeoutError:
-                    print("timeouterror connect")
+                    logging.error("timeouterror connect")
 
             cert = None
             while True:
