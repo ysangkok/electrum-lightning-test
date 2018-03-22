@@ -44,6 +44,12 @@ logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
+try:
+  with open("key_to_port") as r:
+    KEY_TO_PORT = json.loads(r.read())
+except FileNotFoundError:
+  KEY_TO_PORT = {}
+
 class H2Protocol(asyncio.Protocol):
     def __init__(self, elec, killQueuePort):
         config = H2Configuration(client_side=False, header_encoding='utf-8')
@@ -365,25 +371,34 @@ class RealPortsSupplier:
         self.simnet = simnet
     # returns keys for assoc
     async def get(self, socksKey):
-        lnddir = "/tmp/lnd_" + binascii.hexlify(socksKey).decode("ascii")
+        hexKey = binascii.hexlify(socksKey).decode("ascii")
+        lnddir = "/tmp/lnd_" + hexKey
+        print("HEXKEY", hexKey)
         # socksKey is the first 6 bytes of a private key hash
         if socksKey not in self.keysToOffset:
-            chain, invoiceQueue = make_chain(self.currentOffset * 5, True, self.simnet, self.testnet, lnddir)
+            if hexKey in KEY_TO_PORT:
+                chosenPort = KEY_TO_PORT[hexKey]
+                print("sockskey {} has port saved: {}".format(hexKey, chosenPort))
+            else:
+                while self.currentOffset in KEY_TO_PORT.values():
+                    print("skipping offset", self.currentOffset)
+                    self.currentOffset += 1
+                chosenPort = self.currentOffset
+            KEY_TO_PORT[hexKey] = chosenPort
+            chain, invoiceQueue = make_chain(chosenPort * 5, True, self.simnet, self.testnet, lnddir)
             asyncio.ensure_future(asyncio.gather(*chain))
-            self.currentOffset += 1
-            chosenPort = self.currentOffset - 1
             self.keysToOffset[socksKey] = chosenPort
 
             for otherPort in PEERPORTS_TO_PUBKEYS.keys():
                 otherPubkey = PEERPORTS_TO_PUBKEYS[otherPort]
 
-                cmd = "~/go/bin/lncli --lnddir=" + lnddir + " --rpcserver=localhost:" + str(self.currentOffset + 10009) + " connect " + shlex.quote(otherPubkey + "@localhost:" + str(otherPort))
+                cmd = "~/go/bin/lncli --lnddir=" + lnddir + " --rpcserver=localhost:" + str(chosenPort + 10009) + " connect " + shlex.quote(otherPubkey + "@localhost:" + str(otherPort))
                 for attempt_number in range(10):
                   proc = await asyncio.create_subprocess_shell(cmd=cmd, stdout=PIPE, stderr=PIPE)
                   try:
                     await asyncio.wait_for(proc.wait(), 5)
                     if proc.returncode != 0:
-                        logging.error("connect failed for %d time", attempt_number)
+                        logging.error("connect failed for %d time: %s, cmd=%s", attempt_number, (await proc.stderr.read()).decode("utf-8"), cmd)
                         await asyncio.sleep(5)
                     else:
                         break
@@ -403,7 +418,7 @@ class RealPortsSupplier:
             os.environ["GRPC_SSL_CIPHER_SUITES"] = 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256'
             creds = grpc.ssl_channel_credentials(cert)
             endpoint = 'ipv4:///127.0.0.1:' + str(chosenPort + 10009)
-            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(self.currentOffset), "InvoiceSubscription", "SubscribeInvoices", invoiceQueue))
+            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(chosenPort), "InvoiceSubscription", "SubscribeInvoices", invoiceQueue))
             # 2018-02-26T12:42:08.652111 1 SubscribeChannelGraph channel_updates {
             #   chan_id: 1347846224522444800
             #   chan_point {
@@ -450,4 +465,9 @@ else:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '0.0.0.0', 1080)
     server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv))
 
-loop.run_forever()
+try:
+  loop.run_forever()
+except KeyboardInterrupt:
+  with open("key_to_port","w") as w:
+    w.write(json.dumps(KEY_TO_PORT))
+  raise
