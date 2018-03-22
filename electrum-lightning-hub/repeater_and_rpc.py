@@ -389,8 +389,10 @@ class RealPortsSupplier:
             asyncio.ensure_future(asyncio.gather(*chain))
             self.keysToOffset[socksKey] = chosenPort
 
+            snapshotPeerports = list(PEERPORTS_TO_PUBKEYS.keys())
+
             async def connectOtherNodes():
-              for otherPort in PEERPORTS_TO_PUBKEYS.keys():
+              for otherPort in snapshotPeerports:
                 otherPubkey = PEERPORTS_TO_PUBKEYS[otherPort]
 
                 cmd = "~/go/bin/lncli --lnddir=" + lnddir + " --rpcserver=localhost:" + str(chosenPort + 10009) + " connect " + shlex.quote(otherPubkey + "@localhost:" + str(otherPort))
