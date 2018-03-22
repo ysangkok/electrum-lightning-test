@@ -51,6 +51,7 @@ for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon start -D $ELECDIR
 	sleep 1
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon load_wallet -D $ELECDIR
+	sleep 120
 done
 sleep 5
 set +x
