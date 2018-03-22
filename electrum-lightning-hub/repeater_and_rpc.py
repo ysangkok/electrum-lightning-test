@@ -389,7 +389,8 @@ class RealPortsSupplier:
             asyncio.ensure_future(asyncio.gather(*chain))
             self.keysToOffset[socksKey] = chosenPort
 
-            for otherPort in PEERPORTS_TO_PUBKEYS.keys():
+            async def connectOtherNodes():
+              for otherPort in PEERPORTS_TO_PUBKEYS.keys():
                 otherPubkey = PEERPORTS_TO_PUBKEYS[otherPort]
 
                 cmd = "~/go/bin/lncli --lnddir=" + lnddir + " --rpcserver=localhost:" + str(chosenPort + 10009) + " connect " + shlex.quote(otherPubkey + "@localhost:" + str(otherPort))
@@ -404,6 +405,7 @@ class RealPortsSupplier:
                         break
                   except asyncio.TimeoutError:
                     logging.error("timeouterror connect")
+            asyncio.ensure_future(connectOtherNodes())
 
             cert = None
             while True:
