@@ -2,7 +2,7 @@
 # You need Go 1.8+ but Ubuntu 16.04 has only Go 1.6
 sudo add-apt-repository ppa:longsleep/golang-backports
 sudo apt-get update
-sudo apt-get install golang-go
+sudo apt-get install golang-go expect python3-pip python3-venv
 
 # dependency managers
 go get -u github.com/golang/dep/cmd/dep
@@ -28,8 +28,6 @@ txindex=1
 addrindex=1
 rpclisten=127.0.0.1
 EOF
-
-sudo apt install screen
 
 screen btcd
 
