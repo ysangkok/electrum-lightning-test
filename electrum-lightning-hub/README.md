@@ -41,7 +41,7 @@ git clone https://github.com/ysangkok/lnd
 cd
 
 sudo apt install unzip
-wget https://github.com/google/protobuf/releases/download/v3.5.0/protoc-3.5.0-linux-x86_64.zip
+wget https://github.com/google/protobuf/releases/download/v3.5.1/protoc-3.5.1-linux-x86_64.zip
 unzip protoc*.zip
 
 mv bin/protoc go/bin/
@@ -55,8 +55,6 @@ cd electrum-lightning-test/electrum-lightning-hub
 
 cd $GOPATH/src/github.com/lightningnetwork/lnd
 dep ensure
-go get -u github.com/golang/protobuf/protoc-gen-go
-go get -u github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
 ./protoc_electrum.sh
 go install . ./cmd/...
 
