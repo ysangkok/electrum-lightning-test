@@ -2,7 +2,7 @@
 # You need Go 1.8+ but Ubuntu 16.04 has only Go 1.6
 sudo add-apt-repository ppa:longsleep/golang-backports
 sudo apt-get update
-sudo apt-get install golang-go expect python3-pip python3-venv jq
+sudo apt-get install golang-go expect python3-pip python3-venv jq wget unzip git
 
 # dependency managers
 go get -u github.com/golang/dep/cmd/dep
@@ -40,7 +40,6 @@ git clone https://github.com/ysangkok/lnd
 
 cd
 
-sudo apt install unzip
 wget https://github.com/google/protobuf/releases/download/v3.5.1/protoc-3.5.1-linux-x86_64.zip
 unzip protoc*.zip
 
