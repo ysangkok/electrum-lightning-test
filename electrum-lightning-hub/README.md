@@ -1,5 +1,5 @@
 ```
-# You need Go 1.8+ but Ubuntu 16.04 has only Go 1.6
+# You need Go 1.9+ but Ubuntu 16.04 has only Go 1.6
 sudo add-apt-repository ppa:longsleep/golang-backports
 sudo apt-get update
 sudo apt-get install golang-go expect python3-pip python3-venv jq wget unzip git
