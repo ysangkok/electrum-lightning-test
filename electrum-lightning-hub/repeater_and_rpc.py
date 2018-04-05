@@ -447,9 +447,14 @@ else:
 
 realPortsSupplier = RealPortsSupplier(simnet, testnet)
 
+async def generate_some():
+    await asyncio.sleep(5)
+    print("generating some blocks")
+    return await asyncio.create_subprocess_shell("/home/janus/bitcoin-simnet/bin/bitcoin-cli -rpcport=18554 generate 10")
+
 if simnet:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
-    server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_bitcoind_server()))
+    server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_bitcoind_server(), generate_some()))
 else:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '0.0.0.0', 1080)
     server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv))
