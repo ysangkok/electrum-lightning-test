@@ -82,8 +82,6 @@ RUN  curl http://ftp.gnu.org/gnu/bash/bash-4.4.tar.gz | gunzip | tar x \
 ENV CONFIG_SHELL /bin/bash
 RUN cd autoconf-2.69 && bash ./configure && make -j2 && make install
 
-RUN curl http://ftp.gnu.org/gnu/automake/automake-1.15.1.tar.xz | unxz | ./sltar x
-
 RUN curl -L http://invisible-island.net/datafiles/release/byacc.tar.gz | gunzip -cd | ./sltar x
 RUN cd byacc* && ./configure LDFLAGS=-static && make && make install
 
@@ -93,8 +91,6 @@ RUN cd patch-2.7.5 && touch configure $(find . -name Makefile.in) && sleep 1 && 
               AR=$TOOLSBIN/ar \
               RANLIB=$TOOLSBIN/ranlib \
 && make -j2 && make install
-
-RUN curl -o bitcoin.zip -L https://github.com/bitcoin/bitcoin/archive/16240f43a550c9b0c34d541df5fa80c2fb43d17c.zip
 
 RUN curl -L http://ftpmirror.gnu.org/libtool/libtool-2.4.6.tar.gz | gunzip -cd | tar x
 RUN cd libtool-2.4.6 && perl -pi -e 's/^ *wait.*/true/g' configure
@@ -113,22 +109,26 @@ RUN cd boost_* && bash ./bootstrap.sh
 RUN cd boost_* && patchelf --set-interpreter $TOOLSBIN/../lib/libc.so ./b2
 RUN cd boost_* && ./b2 install || true
 
-RUN curl -Lo libressl.zip https://fossies.org/linux/misc/libressl-2.6.4.zip
+RUN curl -Lo libressl.zip https://fossies.org/linux/misc/libressl-2.7.2.zip
 RUN unzip libressl*.zip
 RUN cd libressl-* && perl -pi -e 's/^ *wait.*/true/g' configure
 RUN cd libressl-* && ./configure --disable-asm LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make -j2 && make install
+
+RUN curl http://ftp.gnu.org/gnu/automake/automake-1.16.1.tar.xz | unxz | ./sltar x
+
+RUN cd automake-1.16.1 && perl -pi -e 's/^ *wait.*/true/g' configure
+#RUN cd automake-1.16.1 && touch $(find . -type f)
+RUN echo -e "#!/bin/sh\nexit 0" > /usr/bin/makeinfo
+RUN chmod +x /usr/bin/makeinfo
+RUN cd automake-1.16.1 && bash configure LDFLAGS=-static && make
+RUN cd automake-1.16.1 && make install
+
+RUN curl -o bitcoin.zip -L https://github.com/bitcoin/bitcoin/archive/2b54155a459c235626fddc4495bb681b93d3dbc5.zip
 
 RUN unzip bitcoin.zip
 
 COPY patch patch
 RUN cd bitcoin-* && patch -p1 < ../patch
-
-RUN cd automake-1.15.1 && perl -pi -e 's/^ *wait.*/true/g' configure
-RUN cd automake-1.15.1 && touch $(find . -type f)
-RUN echo -e "#!/bin/sh\nexit 0" > /usr/bin/makeinfo
-RUN chmod +x /usr/bin/makeinfo
-RUN cd automake-1.15.1 && bash configure LDFLAGS=-static && make
-RUN cd automake-1.15.1 && make install
 
 RUN cd bitcoin-* && autoreconf -ivf
 
