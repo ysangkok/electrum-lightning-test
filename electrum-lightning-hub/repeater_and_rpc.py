@@ -231,7 +231,7 @@ def get_electrumx_server():
     os.environ["SSL_PORT"] = "50002"
     os.environ["RPC_PORT"] = "8000"
     os.environ["NET"] = "simnet"
-    os.environ["DAEMON_URL"] = "http://doggman:donkey@127.0.0.1:18554"
+    os.environ["DAEMON_URL"] = "http://doggman:donkey@127.0.0.1:" + ("18554" if simnet else "18332")
     os.environ["DB_DIRECTORY"] = "/home/janus/electrumx-db"
     os.environ["SSL_CERTFILE"] = "/home/janus/electrumx/cert.pem"
     os.environ["SSL_KEYFILE"] = "/home/janus/electrumx/key.pem"
@@ -243,7 +243,7 @@ PEERPORTS_TO_PUBKEYS = {}
 async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simnet, testnet, lnddir):
       assert simnet and not testnet or not simnet and testnet
       kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
-      cmd = "~/go/bin/lnd --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --lnddir=" + lnddir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --bitcoin.node=bitcoind --bitcoind.rpcuser=doggman --bitcoind.rpcpass=donkey --bitcoind.zmqpath=tcp://127.0.0.1:28332 --noencryptwallet --electrumport " + str(electrumport)
+      cmd = "~/go/bin/lnd --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --lnddir=" + lnddir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet --bitcoin.node=bitcoind --bitcoind.rpcuser=doggman --bitcoind.rpcpass=donkey --bitcoind.zmqpath=tcp://127.0.0.1:28332" if simnet else "--bitcoin.node=btcd --btcd.rpcuser=youruser --btcd.rpcpass=SomeDecentp4ssw0rd --btcd.rpchost=localhost:18334 --bitcoin.testnet") + " --noencryptwallet --electrumport " + str(electrumport)
       logging.info(cmd)
       lnd = await asyncio.create_subprocess_shell(cmd, **kwargs)
 
