@@ -217,47 +217,33 @@ addrindex=1
 rpcuser=doggman
 rpcpassword=donkey
 rpcbind=0.0.0.0
+rpcport=18443
 rpcallowip=127.0.0.1
+zmqpubrawblock=tcp://127.0.0.1:28332
+zmqpubrawtx=tcp://127.0.0.1:28332
+rest=1
 """)
     t.flush()
-    return asyncio.create_subprocess_shell("rm -rf /home/janus/.bitcoin/regtest && /home/janus/bitcoin-simnet/bin/bitcoind -conf=" + t.name, stdout=DEVNULL, stderr=DEVNULL)
+    return asyncio.create_subprocess_shell("rm -rf /home/janus/.bitcoin/regtest && /home/janus/bitcoin-simnet/bin/bitcoind -conf=" + t.name)#, stdout=DEVNULL, stderr=DEVNULL)
 
 def get_electrumx_server():
     os.environ["TCP_PORT"] = "50001"
     os.environ["SSL_PORT"] = "50002"
     os.environ["RPC_PORT"] = "8000"
     os.environ["NET"] = "simnet"
-    os.environ["DAEMON_URL"] = "http://doggman:donkey@127.0.0.1:18332"
+    os.environ["DAEMON_URL"] = "http://doggman:donkey@127.0.0.1:18443"
     os.environ["DB_DIRECTORY"] = "/home/janus/electrumx-db"
     os.environ["SSL_CERTFILE"] = "/home/janus/electrumx/cert.pem"
     os.environ["SSL_KEYFILE"] = "/home/janus/electrumx/key.pem"
     os.environ["COIN"] = "Bitcoin"
-    return asyncio.create_subprocess_shell("rm -rf /home/janus/electrumx-db/ && mkdir /home/janus/electrumx-db && /home/janus/electrumx/electrumx_server.py", stdout=DEVNULL, stderr=DEVNULL)
-
-def get_btcd_server(miningaddr):
-    t = tempfile.NamedTemporaryFile(prefix="btcd_config", delete=False)
-    t.write(b"""
-      rpcuser=youruser
-      rpcpass=SomeDecentp4ssw0rd
-      simnet=1
-      miningaddr=""" + miningaddr.encode("ascii") + b"""
-      txindex=1
-      addrindex=1
-      rpclisten=127.0.0.1
-    """)
-    t.flush()
-    datadir=tempfile.TemporaryDirectory(prefix="btcd_datadir")
-    # Note that ~/.btcd is still used for e.g. the rpccert!
-    cmd = "/home/janus/go/bin/btcd -C " + shlex.quote(t.name) + " --datadir " + shlex.quote(datadir.name) + " --connect localhost"
-    return asyncio.create_subprocess_shell(cmd)
+    return asyncio.create_subprocess_shell("rm -rf /home/janus/electrumx-db/ && mkdir /home/janus/electrumx-db && /home/janus/electrumx/electrumx_server.py")#, stdout=DEVNULL, stderr=DEVNULL)
 
 PEERPORTS_TO_PUBKEYS = {}
 
 async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simnet, testnet, lnddir):
       assert simnet and not testnet or not simnet and testnet
       kwargs = {"stdout":DEVNULL, "stderr":DEVNULL} if silent else {}
-      bitcoinrpcport = 18556 if simnet else 18334 # TODO does not support mainnet
-      cmd = "~/go/bin/lnd --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --lnddir=" + lnddir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --btcd.rpcuser=youruser --btcd.rpcpass=SomeDecentp4ssw0rd --btcd.rpchost=localhost:" + str(bitcoinrpcport) + " --noencryptwallet --electrumport " + str(electrumport)
+      cmd = "~/go/bin/lnd --debuglevel warn --configfile=/dev/null --rpclisten=localhost:" + str(rpcport) + " --restlisten=localhost:" + str(restport) + " --lnddir=" + lnddir + " --listen=localhost:" + str(peerport) + " --bitcoin.active " + ("--bitcoin.simnet" if simnet else "") + ("--bitcoin.testnet" if testnet else "") + " --bitcoin.node=bitcoind --bitcoind.rpcuser=doggman --bitcoind.rpcpass=donkey --bitcoind.zmqpath=tcp://127.0.0.1:28332 --noencryptwallet --electrumport " + str(electrumport)
       logging.info(cmd)
       lnd = await asyncio.create_subprocess_shell(cmd, **kwargs)
 
@@ -452,7 +438,6 @@ loop = asyncio.get_event_loop()
 
 if len(sys.argv) > 1:
     # simnet
-    coinbaseAddress = sys.argv[1]
     simnet = True
     testnet = False
 else:
@@ -464,7 +449,7 @@ realPortsSupplier = RealPortsSupplier(simnet, testnet)
 
 if simnet:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
-    server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_btcd_server(coinbaseAddress), get_bitcoind_server()))
+    server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_bitcoind_server()))
 else:
     srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '0.0.0.0', 1080)
     server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv))
