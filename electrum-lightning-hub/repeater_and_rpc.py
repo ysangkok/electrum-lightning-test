@@ -217,7 +217,7 @@ addrindex=1
 rpcuser=doggman
 rpcpassword=donkey
 rpcbind=0.0.0.0
-rpcport=18443
+rpcport=18554
 rpcallowip=127.0.0.1
 zmqpubrawblock=tcp://127.0.0.1:28332
 zmqpubrawtx=tcp://127.0.0.1:28332
@@ -231,7 +231,7 @@ def get_electrumx_server():
     os.environ["SSL_PORT"] = "50002"
     os.environ["RPC_PORT"] = "8000"
     os.environ["NET"] = "simnet"
-    os.environ["DAEMON_URL"] = "http://doggman:donkey@127.0.0.1:18443"
+    os.environ["DAEMON_URL"] = "http://doggman:donkey@127.0.0.1:18554"
     os.environ["DB_DIRECTORY"] = "/home/janus/electrumx-db"
     os.environ["SSL_CERTFILE"] = "/home/janus/electrumx/cert.pem"
     os.environ["SSL_KEYFILE"] = "/home/janus/electrumx/key.pem"
@@ -371,7 +371,7 @@ class RealPortsSupplier:
                     self.currentOffset += 1
                 chosenPort = self.currentOffset
             KEY_TO_PORT[hexKey] = chosenPort
-            chain, invoiceQueue = make_chain(chosenPort * 5, True, self.simnet, self.testnet, lnddir)
+            chain, invoiceQueue = make_chain(chosenPort * 5, False, self.simnet, self.testnet, lnddir)
             asyncio.ensure_future(asyncio.gather(*chain))
             self.keysToOffset[socksKey] = chosenPort
 
