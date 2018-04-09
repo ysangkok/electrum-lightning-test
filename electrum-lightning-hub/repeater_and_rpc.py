@@ -33,6 +33,7 @@ import shlex
 import tempfile
 import os
 import sys
+import codecs
 from subprocess import DEVNULL, PIPE
 
 import socksserver
@@ -44,11 +45,21 @@ logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
-try:
-  with open("key_to_port") as r:
-    KEY_TO_PORT = json.loads(r.read())
-except FileNotFoundError:
-  KEY_TO_PORT = {}
+if len(sys.argv) > 1:
+    # simnet
+    simnet = True
+    testnet = False
+else:
+    simnet = False
+    testnet = True
+
+KEY_TO_PORT = {}
+if not simnet:
+  try:
+    with open("key_to_port") as r:
+      KEY_TO_PORT = json.loads(r.read())
+  except FileNotFoundError:
+    pass
 
 class H2Protocol(asyncio.Protocol):
     def __init__(self, elec, killQueuePort):
@@ -322,6 +333,8 @@ def make_chain(offset, silent, simnet, testnet, lnddir):
   assert 8432 + offset not in assoc
   assoc[8432 + offset] = Queues()
 
+  assert offset//5 < 9, "too many entries wallets in key_to_port, port number of lnd's rest port is colliding with lncli_endpoint's create_on_loop"
+
   writeQueue = assoc[8432+offset].writeQueue
   queueMonitor = socksserver.queueMonitor(assoc[8432+offset].readQueue, writeQueue, 8432+offset, assoc[8432+offset].killQueue)
   lnd = get_lnd_server(9090+offset//5, peerport=9735+offset//5, rpcport=10009+offset//5, restport=8081+offset//5, silent=silent, simnet=simnet, testnet=testnet, lnddir=lnddir)
@@ -330,13 +343,13 @@ def make_chain(offset, silent, simnet, testnet, lnddir):
 
 PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'lnddir'])
 
-async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageClass, streamingRpcFunc, invoiceQueue):
+async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageClass, streamingRpcFunc, invoiceQueue, macaroon):
     while True:
         try:
             channel = secure_channel(connStr, creds)
             mystub = lnrpcgrpc.LightningStub(channel)
             request = getattr(lnrpc, subscriptionMessageClass)()
-            invoiceSource = getattr(mystub, streamingRpcFunc)(request)
+            invoiceSource = getattr(mystub, streamingRpcFunc)(request, metadata=[("macaroon", macaroon)])
             async for invoice in invoiceSource:
                 logging.info("%s %s %s", prefix, streamingRpcFunc, invoice)
                 await invoiceQueue.put(json_format.MessageToJson(invoice).encode("ascii") + b"\n")
@@ -345,7 +358,7 @@ async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageCla
                 message = rpc_error.details()
             except AttributeError:
                 message = str(rpc_error)
-            #logging.info("sleeping, streaming update %s %s failed: %s", prefix, streamingRpcFunc, message)
+            logging.info("sleeping, streaming update %s %s failed: %s", prefix, streamingRpcFunc, message)
             await asyncio.sleep(5)
             continue
 
@@ -408,7 +421,10 @@ class RealPortsSupplier:
             os.environ["GRPC_SSL_CIPHER_SUITES"] = 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256'
             creds = grpc.ssl_channel_credentials(cert)
             endpoint = 'ipv4:///127.0.0.1:' + str(chosenPort + 10009)
-            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(chosenPort), "InvoiceSubscription", "SubscribeInvoices", invoiceQueue))
+            with open(os.path.expanduser(lnddir + '/admin.macaroon'), 'rb') as f:
+                macaroon_bytes = f.read()
+                macaroon = codecs.encode(macaroon_bytes, 'hex')
+            asyncio.ensure_future(receiveStreamingUpdates(endpoint, creds, str(chosenPort), "InvoiceSubscription", "SubscribeInvoices", invoiceQueue, macaroon))
             # 2018-02-26T12:42:08.652111 1 SubscribeChannelGraph channel_updates {
             #   chan_id: 1347846224522444800
             #   chan_point {
@@ -435,14 +451,6 @@ class RealPortsSupplier:
 
 
 loop = asyncio.get_event_loop()
-
-if len(sys.argv) > 1:
-    # simnet
-    simnet = True
-    testnet = False
-else:
-    simnet = False
-    testnet = True
 
 
 realPortsSupplier = RealPortsSupplier(simnet, testnet)
