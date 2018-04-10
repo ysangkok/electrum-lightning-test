@@ -352,7 +352,7 @@ async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageCla
             invoiceSource = getattr(mystub, streamingRpcFunc)(request, metadata=[("macaroon", macaroon)])
             async for invoice in invoiceSource:
                 logging.info("%s %s %s", prefix, streamingRpcFunc, invoice)
-                await invoiceQueue.put(json_format.MessageToJson(invoice).encode("ascii") + b"\n")
+                await invoiceQueue.put(json_format.MessageToJson(invoice).replace("\n","").encode("ascii") + b"\n")
         except grpc.RpcError as rpc_error:
             try:
                 message = rpc_error.details()
