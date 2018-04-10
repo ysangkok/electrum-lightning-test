@@ -20,7 +20,7 @@ if [ ! -f ~/go/bin/protoc ]; then
 	cd -
 fi
 ./protoc_lightning.sh
-rm -vf screenlog.*
+rm -vf screenlog.* key_to_port
 screen -L -S lightning-hub -d -m env PYTHONPATH=lib/ln ../venv/bin/python repeater_and_rpc.py
 screen -ls
 tail -f screenlog.0 &
