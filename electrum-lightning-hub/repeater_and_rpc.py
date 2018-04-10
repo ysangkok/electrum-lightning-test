@@ -45,30 +45,15 @@ logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
-if len(sys.argv) > 1:
-    # simnet
-    simnet = True
-    testnet = False
-else:
-    simnet = False
-    testnet = True
-
-KEY_TO_PORT = {}
-if not simnet:
-  try:
-    with open("key_to_port") as r:
-      KEY_TO_PORT = json.loads(r.read())
-  except FileNotFoundError:
-    pass
-
 class H2Protocol(asyncio.Protocol):
-    def __init__(self, elec, killQueuePort):
+    def __init__(self, elec, killQueuePort, assoc):
         config = H2Configuration(client_side=False, header_encoding='utf-8')
         self.conn = H2Connection(config=config)
         self.transport = None
         self.stream_data = {}
         self.elec = elec
         self.killQueuePort = killQueuePort
+        self.assoc = assoc
 
     def connection_made(self, transport: asyncio.Transport):
         self.transport = transport
@@ -182,7 +167,7 @@ class H2Protocol(asyncio.Protocol):
               self.conn.send_headers(stream_id, response_headers, end_stream=True)
               data = self.conn.data_to_send()
               self.transport.write(data)
-              asyncio.ensure_future(assoc[self.killQueuePort].killQueue.put(data))
+              asyncio.ensure_future(self.assoc[self.killQueuePort].killQueue.put(data))
               return
             b = rpc_pb2.__dict__[methodname + "Response"]()
             try:
@@ -202,18 +187,18 @@ class H2Protocol(asyncio.Protocol):
             self.conn.send_headers(stream_id, (("grpc-status", "0",),), end_stream=True)
             data = self.conn.data_to_send()
             self.transport.write(data)
-            asyncio.ensure_future(assoc[self.killQueuePort].killQueue.put(data))
+            asyncio.ensure_future(self.assoc[self.killQueuePort].killQueue.put(data))
           asyncio.ensure_future(res).add_done_callback(done)
           return
       raise Exception("method " + path + " not found!")
 
 servers = {}
 
-def make_h2handler(port, killQueuePort):
+def make_h2handler(port, killQueuePort, assoc):
   def handler():
     if port in servers:
       return servers[port]
-    servers[port] = H2Protocol(Server("http://localhost:" + str(port)), killQueuePort)
+    servers[port] = H2Protocol(Server("http://localhost:" + str(port)), killQueuePort, assoc)
     logging.info("made new client connecting to port " + str(port))
     return servers[port]
   return handler
@@ -316,18 +301,15 @@ def mkhandler(port):
   app.router.add_route("*", "", all_handler)
   return app.make_handler()
 
-#Maps ports to queues
-assoc = {}
-
 class Queues:
     def __init__(self):
         self.readQueue = asyncio.Queue()
         self.writeQueue = asyncio.Queue()
         self.killQueue = asyncio.Queue()
 
-def make_chain(offset, silent, simnet, testnet, lnddir):
+def make_chain(offset, silent, simnet, testnet, lnddir, assoc):
   logging.info("starting chain on " + str(9090 + offset//5))
-  coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset), '127.0.0.1', 9090+offset//5)
+  coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset), '127.0.0.1', 9090+offset//5, assoc)
   elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
 
   assert 8432 + offset not in assoc
@@ -363,11 +345,12 @@ async def receiveStreamingUpdates(connStr, creds, prefix, subscriptionMessageCla
             continue
 
 class RealPortsSupplier:
-    def __init__(self, simnet, testnet):
+    def __init__(self, simnet, testnet, assoc):
         self.currentOffset = 0
         self.keysToOffset = {}
         self.testnet = testnet
         self.simnet = simnet
+        self.assoc = assoc
     # returns keys for assoc
     async def get(self, socksKey):
         hexKey = binascii.hexlify(socksKey).decode("ascii")
@@ -384,7 +367,7 @@ class RealPortsSupplier:
                     self.currentOffset += 1
                 chosenPort = self.currentOffset
             KEY_TO_PORT[hexKey] = chosenPort
-            chain, invoiceQueue = make_chain(chosenPort * 5, False, self.simnet, self.testnet, lnddir)
+            chain, invoiceQueue = make_chain(chosenPort * 5, False, self.simnet, self.testnet, lnddir, self.assoc)
             asyncio.ensure_future(asyncio.gather(*chain))
             self.keysToOffset[socksKey] = chosenPort
 
@@ -450,26 +433,43 @@ class RealPortsSupplier:
         return PortPair(electrumReverseHTTPPort=8432 + (self.keysToOffset[socksKey] * 5), lndRPCPort=10009 + self.keysToOffset[socksKey] , lnddir=lnddir)
 
 
-loop = asyncio.get_event_loop()
-
-
-realPortsSupplier = RealPortsSupplier(simnet, testnet)
-
 async def generate_some():
     await asyncio.sleep(5)
     print("generating some blocks")
     return await asyncio.create_subprocess_shell("/home/janus/bitcoin-simnet/bin/bitcoin-cli -rpcport=18554 generate 10")
 
-if simnet:
-    srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
-    server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_bitcoind_server(), generate_some()))
-else:
-    srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '0.0.0.0', 1080)
-    server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv))
+if __name__ == "__main__":
 
-try:
-  loop.run_forever()
-except KeyboardInterrupt:
-  with open("key_to_port","w") as w:
-    w.write(json.dumps(KEY_TO_PORT))
-  raise
+  if len(sys.argv) > 1:
+      # simnet
+      simnet = True
+      testnet = False
+  else:
+      simnet = False
+      testnet = True
+  
+  KEY_TO_PORT = {}
+  if not simnet:
+    try:
+      with open("key_to_port") as r:
+        KEY_TO_PORT = json.loads(r.read())
+    except FileNotFoundError:
+      pass
+  #Maps ports to queues
+  assoc = {}
+
+  realPortsSupplier = RealPortsSupplier(simnet, testnet, assoc)
+  loop = asyncio.get_event_loop()
+
+  if simnet:
+      srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '127.0.0.1', 1080)
+      server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv, get_electrumx_server(), get_bitcoind_server(), generate_some()))
+  else:
+      srv = asyncio.start_server(socksserver.make_handler(assoc, realPortsSupplier), '0.0.0.0', 1080)
+      server = loop.run_until_complete(asyncio.gather(create_on_loop(loop, realPortsSupplier), srv))
+  try:
+    loop.run_forever()
+  except KeyboardInterrupt:
+    with open("key_to_port","w") as w:
+      w.write(json.dumps(KEY_TO_PORT))
+    raise
