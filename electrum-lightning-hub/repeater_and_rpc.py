@@ -309,7 +309,7 @@ class Queues:
 
 def make_chain(offset, silent, simnet, testnet, lnddir, assoc):
   logging.info("starting chain on " + str(9090 + offset//5))
-  coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset, assoc), '127.0.0.1', 9090+offset//5)
+  coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset, assoc=assoc), '127.0.0.1', 9090+offset//5)
   elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
 
   assert 8432 + offset not in assoc
