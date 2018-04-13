@@ -111,7 +111,17 @@ sleep 1
 ../venv/bin/python electrum --testnet daemon stop
 cd -
 
-sleep 1600
+set +x
+while true; do
+  OUT="$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet getbalance -D $ELECDIR1)"
+  CODE="$(echo $OUT | jq -r '.confirmed' || true)"
+  if [[ $CODE != "0" ]]; then
+    echo "$OUT"
+    break
+  fi
+  sleep 60
+done
+set -x
 
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon status -D $ELECDIR
