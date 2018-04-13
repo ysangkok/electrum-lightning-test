@@ -120,7 +120,7 @@ done
 
 # from json to sh:
 # for i in $(./electrum --testnet listaddresses | jq -r '@sh "echo \(.)"' | sh); do echo $i; done
-echo $NODE2PUBK 100000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
+echo $NODE2PUBK 20000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
 #screen -X -S lightning-hub quit
 #ps aux | grep lnd
 #(
