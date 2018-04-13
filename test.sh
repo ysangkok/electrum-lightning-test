@@ -106,7 +106,7 @@ done
 ../venv/bin/python electrum --testnet daemon status # TODO check if server_height == local_height
 ../venv/bin/python electrum --testnet getbalance
 ../venv/bin/python electrum --testnet listaddresses
-../venv/bin/python electrum --testnet payto $NODE1ADDR 0.01 | ../venv/bin/python electrum --testnet broadcast -
+../venv/bin/python electrum --testnet payto $NODE1ADDR 0.10 | ../venv/bin/python electrum --testnet broadcast -
 sleep 1
 ../venv/bin/python electrum --testnet daemon stop
 cd -
