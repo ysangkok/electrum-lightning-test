@@ -1,5 +1,3 @@
-import jsonrpc_base
-from jsonrpc_async import Server
 import asyncio
 
 from h2.config import H2Configuration
@@ -12,7 +10,6 @@ from h2.exceptions import ProtocolError
 
 import grpc
 from aiogrpc import secure_channel
-from aiohttp import web
 
 from lib.ln.electrum_bridge import rpc_pb2_grpc, rpc_pb2
 
@@ -23,7 +20,6 @@ from google.protobuf import json_format
 
 from typing import List, Tuple
 from datetime import datetime
-import time
 import json
 import io
 import binascii
@@ -46,14 +42,13 @@ logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 RequestData = collections.namedtuple('RequestData', ['headers', 'data'])
 
 class H2Protocol(asyncio.Protocol):
-    def __init__(self, elec, killQueuePort, assoc):
+    def __init__(self, queues):
         config = H2Configuration(client_side=False, header_encoding='utf-8')
         self.conn = H2Connection(config=config)
         self.transport = None
         self.stream_data = {}
-        self.elec = elec
-        self.killQueuePort = killQueuePort
-        self.assoc = assoc
+        self.queues = queues
+        self.serialNumber = 1
 
     def connection_made(self, transport: asyncio.Transport):
         self.transport = transport
@@ -152,11 +147,11 @@ class H2Protocol(asyncio.Protocol):
           jso = json_format.MessageToJson(a)
           if len(json.loads(jso).keys()) == 0 and methodname == "FetchInputInfo":
             raise Exception("no keys" + repr(a) + " " + repr(body))
-          res = getattr(self.elec, methodname)(jso)
+          res = self.queues.writeQueue.put(json.dumps({"id": str(self.serialNumber), "method": methodname, "params": [jso]}).encode("ascii"))
+          self.serialNumber += 1
           def done(fut):
             try:
               fut.exception()
-              logging.info("result " + fut.result())
             except Exception as e:
               logging.warning("While handling " + methodname)
               traceback.print_exc()
@@ -167,38 +162,43 @@ class H2Protocol(asyncio.Protocol):
               self.conn.send_headers(stream_id, response_headers, end_stream=True)
               data = self.conn.data_to_send()
               self.transport.write(data)
-              asyncio.ensure_future(self.assoc[self.killQueuePort].killQueue.put(data))
+              asyncio.ensure_future(self.queues.killQueue.put(data))
               return
             b = rpc_pb2.__dict__[methodname + "Response"]()
-            try:
-              json_format.Parse(fut.result(), b)
-            except:
-              json_format.Parse("{}", b)
-            bajts = b.SerializeToString()
-            bajts = b"\x00" + len(bajts).to_bytes(byteorder="big", length=4) + bajts
-            response_headers = (
-                (':status', '200'),
-                ('content-type', 'application/grpc+proto'),
-                ('content-length', str(len(bajts))),
-                ('server', 'asyncio-h2'),
-            )
-            self.conn.send_headers(stream_id, response_headers)
-            self.conn.send_data(stream_id, bajts)
-            self.conn.send_headers(stream_id, (("grpc-status", "0",),), end_stream=True)
-            data = self.conn.data_to_send()
-            self.transport.write(data)
-            asyncio.ensure_future(self.assoc[self.killQueuePort].killQueue.put(data))
+            def done2(fut):
+              try:
+                res = fut.result().decode("ascii")
+                logging.info("result " + res)
+                json_format.Parse(json.loads(res)["result"], b)
+              except:
+                traceback.print_exc()
+                json_format.Parse("{}", b)
+              bajts = b.SerializeToString()
+              bajts = b"\x00" + len(bajts).to_bytes(byteorder="big", length=4) + bajts
+              response_headers = (
+                  (':status', '200'),
+                  ('content-type', 'application/grpc+proto'),
+                  ('content-length', str(len(bajts))),
+                  ('server', 'asyncio-h2'),
+              )
+              self.conn.send_headers(stream_id, response_headers)
+              self.conn.send_data(stream_id, bajts)
+              self.conn.send_headers(stream_id, (("grpc-status", "0",),), end_stream=True)
+              data = self.conn.data_to_send()
+              self.transport.write(data)
+              asyncio.ensure_future(self.queues.killQueue.put(data))
+            asyncio.ensure_future(self.queues.readQueue.get()).add_done_callback(done2)
           asyncio.ensure_future(res).add_done_callback(done)
           return
       raise Exception("method " + path + " not found!")
 
 servers = {}
 
-def make_h2handler(port, killQueuePort, assoc):
+def make_h2handler(port, assoc):
   def handler():
     if port in servers:
       return servers[port]
-    servers[port] = H2Protocol(Server("http://localhost:" + str(port)), killQueuePort, assoc)
+    servers[port] = H2Protocol(assoc[port])
     logging.info("made new client connecting to port " + str(port))
     return servers[port]
   return handler
@@ -257,50 +257,6 @@ async def get_lnd_server(electrumport, peerport, rpcport, restport, silent, simn
 
       return lnd
 
-locks = collections.defaultdict(asyncio.Lock)
-
-def mkhandler(port):
-  q = asyncio.Queue()
-  async def all_handler(request):
-      content = await request.content.read()
-      strcontent = content.decode("ascii") # python 3.5 and lower do not accept bytes in json.loads
-      parsedrequest = json.loads(strcontent)
-
-      async def client_connected_tb(client_reader, client_writer):
-          client_writer.write(content)
-          await client_writer.drain()
-
-          #client_writer.close()
-
-          data = b""
-          while True:
-              data += await client_reader.read()
-              try:
-                  parsedresponse = json.loads(data.decode("ascii"))
-                  assert parsedresponse["id"] == parsedrequest["id"], "mismatched response " + repr(parsedresponse) + " for request " + repr(parsedrequest)
-                  break
-              except:
-                  await asyncio.sleep(0.1)
-          await q.put(json.dumps(parsedresponse).encode("utf-8"))
-      logging.info("waiting for server lock {}".format(port))
-      async with locks[port]:
-        server = await asyncio.start_server(client_connected_tb, port=port, backlog=1)
-        resp = None
-        while resp is None:
-          try:
-            resp = await asyncio.wait_for(q.get(), 30)
-            assert resp, "Got None from queue!"
-          except asyncio.TimeoutError: 
-            logging.info("{} was not connected to!".format(port))
-          else:
-            server.close()
-            await server.wait_closed()
-            return web.Response(body=resp, content_type="application/json")
-
-  app = web.Application()
-  app.router.add_route("*", "", all_handler)
-  return app.make_handler()
-
 class Queues:
     def __init__(self):
         self.readQueue = asyncio.Queue()
@@ -309,11 +265,11 @@ class Queues:
 
 def make_chain(offset, silent, simnet, testnet, lnddir, assoc):
   logging.info("starting chain on " + str(9090 + offset//5))
-  coro = loop.create_server(make_h2handler(8433+offset, killQueuePort=8432+offset, assoc=assoc), '127.0.0.1', 9090+offset//5)
-  elec1 = loop.create_server(mkhandler(8432+offset), '127.0.0.1', 8433+offset)
 
   assert 8432 + offset not in assoc
   assoc[8432 + offset] = Queues()
+
+  coro = loop.create_server(make_h2handler(8432+offset, assoc), '127.0.0.1', 9090+offset//5)
 
   assert offset//5 < 9, "too many entries wallets in key_to_port, port number of lnd's rest port is colliding with lncli_endpoint's create_on_loop"
 
@@ -321,7 +277,7 @@ def make_chain(offset, silent, simnet, testnet, lnddir, assoc):
   queueMonitor = socksserver.queueMonitor(assoc[8432+offset].readQueue, writeQueue, 8432+offset, assoc[8432+offset].killQueue)
   lnd = get_lnd_server(9090+offset//5, peerport=9735+offset//5, rpcport=10009+offset//5, restport=8081+offset//5, silent=silent, simnet=simnet, testnet=testnet, lnddir=lnddir)
   # return writeQueue as invoiceQueue
-  return [lnd, coro, elec1, queueMonitor], writeQueue
+  return [lnd, coro, queueMonitor], writeQueue
 
 PortPair = collections.namedtuple('PortPair', ['electrumReverseHTTPPort', 'lndRPCPort', 'lnddir'])
 

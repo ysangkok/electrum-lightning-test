@@ -1,3 +1,2 @@
-jsonrpc_async
 h2
 aiogrpc
