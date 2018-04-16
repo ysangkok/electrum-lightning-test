@@ -106,22 +106,24 @@ done
 ../venv/bin/python electrum --testnet daemon status # TODO check if server_height == local_height
 ../venv/bin/python electrum --testnet getbalance
 ../venv/bin/python electrum --testnet listaddresses
-../venv/bin/python electrum --testnet payto $NODE1ADDR 0.003 | ../venv/bin/python electrum --testnet broadcast -
+../venv/bin/python electrum --testnet payto $NODE1ADDR 0.2 | ../venv/bin/python electrum --testnet broadcast -
 sleep 1
 ../venv/bin/python electrum --testnet daemon stop
 cd -
 
-set +x
-while true; do
-  OUT="$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet getbalance -D $ELECDIR1)"
-  CODE="$(echo $OUT | jq -r '.confirmed' || true)"
-  if [[ $CODE != "0" ]]; then
-    echo "$OUT"
-    break
-  fi
-  sleep 60
-done
-set -x
+sleep 60
+
+#set +x
+#while true; do
+#  OUT="$(PYTHONPATH=lib/ln ../venv/bin/python electrum --testnet getbalance -D $ELECDIR1)"
+#  CODE="$(echo $OUT | jq -r '.confirmed' || true)"
+#  if [[ $CODE != "0" ]]; then
+#    echo "$OUT"
+#    break
+#  fi
+#  sleep 60
+#done
+#set -x
 
 for ELECDIR in $ELECDIR1 $ELECDIR2; do
   PYTHONPATH=lib/ln ../venv/bin/python ./electrum --testnet daemon status -D $ELECDIR
@@ -132,7 +134,7 @@ done
 
 # from json to sh:
 # for i in $(./electrum --testnet listaddresses | jq -r '@sh "echo \(.)"' | sh); do echo $i; done
-echo $NODE2PUBK 20000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
+echo $NODE2PUBK 200000 | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip().split(" ")))' | bash -c "time ../venv/bin/python electrum --testnet lightning openchannel -D $ELECDIR1 --lightningargs -"
 #screen -X -S lightning-hub quit
 #ps aux | grep lnd
 #(
