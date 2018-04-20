@@ -1,8 +1,8 @@
 diff --git a/src/chainparams.cpp b/src/chainparams.cpp
-index adf8e6ae5..c70f1559b 100644
+index 121d95af9..fd58fe040 100644
 --- a/src/chainparams.cpp
 +++ b/src/chainparams.cpp
-@@ -282,20 +282,20 @@ public:
+@@ -281,20 +281,20 @@ public:
  class CRegTestParams : public CChainParams {
  public:
      CRegTestParams() {
@@ -10,7 +10,7 @@ index adf8e6ae5..c70f1559b 100644
 -        consensus.nSubsidyHalvingInterval = 150;
 +        strNetworkID = "sim";
 +        consensus.nSubsidyHalvingInterval = 210000;
-         consensus.BIP16Height = 0; // always enforce P2SH BIP16 on regtest
+         consensus.BIP16Exception = uint256();
          consensus.BIP34Height = 100000000; // BIP34 has not activated on regtest (far in the future so block v1 are not rejected in tests)
          consensus.BIP34Hash = uint256();
 -        consensus.BIP65Height = 1351; // BIP65 activated on regtest (Used in rpc activation tests)
@@ -29,7 +29,7 @@ index adf8e6ae5..c70f1559b 100644
          consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
          consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 0;
          consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-@@ -312,16 +312,16 @@ public:
+@@ -311,16 +311,16 @@ public:
          // By default assume that the signatures in ancestors of this block are valid.
          consensus.defaultAssumeValid = uint256S("0x00");
  
@@ -53,7 +53,7 @@ index adf8e6ae5..c70f1559b 100644
          assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
  
          vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
-@@ -333,7 +333,6 @@ public:
+@@ -332,7 +332,6 @@ public:
  
          checkpointData = {
              {
@@ -61,7 +61,7 @@ index adf8e6ae5..c70f1559b 100644
              }
          };
  
-@@ -343,13 +342,13 @@ public:
+@@ -342,13 +341,13 @@ public:
              0
          };
  
