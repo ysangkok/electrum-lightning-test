@@ -47,7 +47,7 @@ RUN curl http://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.xz | unxz | ./sltar x
 
 RUN curl -L http://landley.net/toybox/bin/toybox-x86_64 > /usr/bin/comm && chmod +x /usr/bin/comm
 
-RUN curl -L http://www.bzip.org/1.0.6/bzip2-1.0.6.tar.gz | gunzip -cd | tar x
+RUN curl -L "https://downloads.sourceforge.net/project/bzip2/bzip2-1.0.6.tar.gz" | gunzip -cd | tar x
 RUN cd bzip2-1.0.6 && sed -i.bak -re "s#AR=ar#AR=$TOOLSBIN/ar#g" Makefile
 RUN cd bzip2-1.0.6 && sed -i.bak -re "s#LDFLAGS=#LDFLAGS=-static#g" Makefile
 RUN cd bzip2-1.0.6 && make && make install
@@ -109,21 +109,21 @@ RUN cd boost_* && bash ./bootstrap.sh
 RUN cd boost_* && patchelf --set-interpreter $TOOLSBIN/../lib/libc.so ./b2
 RUN cd boost_* && ./b2 install || true
 
-RUN curl -Lo libressl.zip https://fossies.org/linux/misc/libressl-2.7.2.zip
-RUN unzip libressl*.zip
+RUN curl -Lo libressl.zip https://fossies.org/linux/misc/libressl-2.8.2.zip
+RUN unzip libressl.zip
 RUN cd libressl-* && perl -pi -e 's/^ *wait.*/true/g' configure
 RUN cd libressl-* && ./configure --disable-asm LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib && make -j2 && make install
 
-RUN curl http://ftp.gnu.org/gnu/automake/automake-1.16.1.tar.xz | unxz | ./sltar x
-
+RUN curl -Lo automake.zip https://fossies.org/linux/misc/automake-1.16.1.zip
+RUN unzip automake.zip
 RUN cd automake-1.16.1 && perl -pi -e 's/^ *wait.*/true/g' configure
-#RUN cd automake-1.16.1 && touch $(find . -type f)
+RUN cd automake-1.16.1 && touch $(find . -type f)
 RUN echo -e "#!/bin/sh\nexit 0" > /usr/bin/makeinfo
 RUN chmod +x /usr/bin/makeinfo
 RUN cd automake-1.16.1 && bash configure LDFLAGS=-static && make
 RUN cd automake-1.16.1 && make install
 
-RUN curl -o bitcoin.zip -L https://github.com/bitcoin/bitcoin/archive/2b54155a459c235626fddc4495bb681b93d3dbc5.zip
+RUN curl -o bitcoin.zip -L https://github.com/bitcoin/bitcoin/archive/0.17.zip
 
 RUN unzip bitcoin.zip
 
@@ -140,7 +140,7 @@ RUN cd bitcoin-* && perl -pi -e 's/^ *wait.*/true/g' $(find . -type f -name conf
 RUN cd bitcoin-* && perl -pi -e 's/\$\(CC_FOR_BUILD\) \$\^ -o \$@/\$(CC_FOR_BUILD) \$^ -static -o \$@/g' src/secp256k1/Makefile.am
 RUN cd bitcoin-* && bash ./configure --disable-wallet --disable-shared --enable-debug CFLAGS=-static CXXFLAGS=-static LDFLAGS=-static AR=$TOOLSBIN/ar RANLIB=$TOOLSBIN/ranlib
 RUN cd bitcoin-* && make -j2 V=1 || true
-RUN cd bitcoin-*/src && /i486-musl-cross/bin/i486-linux-musl-g++ -std=c++11 -fstack-protector-all -o bitcoind bitcoind-bitcoind.o  libbitcoin_server.a libbitcoin_common.a univalue/.libs/libunivalue.a libbitcoin_util.a libbitcoin_consensus.a crypto/libbitcoin_crypto.a leveldb/libleveldb.a leveldb/libleveldb_sse42.a leveldb/libmemenv.a secp256k1/.libs/libsecp256k1.a -L/usr/local/lib -lboost_system -lboost_filesystem -lboost_program_options -lboost_thread -lboost_chrono /usr/local/lib/libssl.a /usr/local/lib/libcrypto.a /usr/local/lib/libevent_pthreads.a /usr/local/lib/libevent.a /i486-musl-cross/i486-linux-musl/lib/libatomic.a -static
+RUN cd bitcoin-*/src && /i486-musl-cross/bin/i486-linux-musl-g++ -std=c++11 -fstack-protector-all -o bitcoind bitcoind-bitcoind.o  libbitcoin_server.a libbitcoin_common.a univalue/.libs/libunivalue.a libbitcoin_util.a libbitcoin_consensus.a crypto/libbitcoin_crypto_base.a crypto/libbitcoin_crypto_sse41.a crypto/libbitcoin_crypto_avx2.a crypto/libbitcoin_crypto_shani.a leveldb/libleveldb.a leveldb/libleveldb_sse42.a leveldb/libmemenv.a secp256k1/.libs/libsecp256k1.a -L/usr/local/lib -lboost_system -lboost_filesystem -lboost_program_options -lboost_thread -lboost_chrono /usr/local/lib/libssl.a /usr/local/lib/libcrypto.a /usr/local/lib/libevent_pthreads.a /usr/local/lib/libevent.a /i486-musl-cross/i486-linux-musl/lib/libatomic.a -static
 #RUN cd bitcoin-* && bash -c "patchelf --set-interpreter $TOOLSBIN/../lib/libc.so src/bitcoin{d,-tx,-cli}"
 #RUN find / -iname '*libstdc++*'
 RUN cd bitcoin-* && ls -lh ./src/bitcoind
